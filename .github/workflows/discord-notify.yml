@@ -1,0 +1,51 @@
+name: Discord Label Notification
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  pull_request:
+    types: [opened, closed, reopened, ready_for_review]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine target webhook by label
+        id: route
+        run: |
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            LABELS='${{ toJson(github.event.issue.labels) }}'
+            TITLE='${{ github.event.issue.title }}'
+            URL='${{ github.event.issue.html_url }}'
+            TYPE="이슈"
+            ACTION='${{ github.event.action }}'
+          else
+            LABELS='${{ toJson(github.event.pull_request.labels) }}'
+            TITLE='${{ github.event.pull_request.title }}'
+            URL='${{ github.event.pull_request.html_url }}'
+            TYPE="PR"
+            ACTION='${{ github.event.action }}'
+          fi
+
+          WEBHOOK=""
+          if echo "$LABELS" | grep -q '"frontend"'; then
+            WEBHOOK="${{ secrets.DISCORD_WEBHOOK_FRONTEND }}"
+          elif echo "$LABELS" | grep -q '"backend"'; then
+            WEBHOOK="${{ secrets.DISCORD_WEBHOOK_BACKEND }}"
+          elif echo "$LABELS" | grep -q '"ai"'; then
+            WEBHOOK="${{ secrets.DISCORD_WEBHOOK_AI }}"
+          fi
+
+          echo "webhook=$WEBHOOK" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "type=$TYPE" >> $GITHUB_OUTPUT
+          echo "action=$ACTION" >> $GITHUB_OUTPUT
+
+      - name: Send notification to Discord
+        if: steps.route.outputs.webhook != ''
+        run: |
+          curl -H "Content-Type: application/json" \
+               -X POST \
+               -d "{\"content\":\"**[${{ steps.route.outputs.type }} ${{ steps.route.outputs.action }}]** ${{ steps.route.outputs.title }}\n${{ steps.route.outputs.url }}\"}" \
+               "${{ steps.route.outputs.webhook }}"
