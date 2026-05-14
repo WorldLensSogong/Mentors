@@ -1,0 +1,46 @@
+# 비밀
+.env
+.env.*
+!.env.example
+
+# FCM 서비스 계정
+*-firebase-adminsdk-*.json
+fcm-credentials*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# 도구 캐시
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 데이터
+*.db
+*.sqlite
+chromadata/
+pgdata/

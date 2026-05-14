@@ -2,50 +2,113 @@ name: Discord Label Notification
 
 on:
   issues:
-    types: [opened, closed, reopened]
+    types: [closed, reopened, labeled]
   pull_request:
-    types: [opened, closed, reopened, ready_for_review]
+    types: [closed, reopened, ready_for_review, labeled]
 
 jobs:
   notify:
     runs-on: ubuntu-latest
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      ACTION: ${{ github.event.action }}
+      ADDED_LABEL: ${{ github.event.label.name }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+      ISSUE_URL: ${{ github.event.issue.html_url }}
+      ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+      WEBHOOK_FRONTEND: ${{ secrets.DISCORD_WEBHOOK_FRONTEND }}
+      WEBHOOK_BACKEND: ${{ secrets.DISCORD_WEBHOOK_BACKEND }}
+      WEBHOOK_AI: ${{ secrets.DISCORD_WEBHOOK_AI }}
     steps:
       - name: Determine target webhook by label
         id: route
         run: |
-          if [ "${{ github.event_name }}" = "issues" ]; then
-            LABELS='${{ toJson(github.event.issue.labels) }}'
-            TITLE='${{ github.event.issue.title }}'
-            URL='${{ github.event.issue.html_url }}'
+          if [ "$EVENT_NAME" = "issues" ]; then
+            LABELS="$ISSUE_LABELS"
+            TITLE="$ISSUE_TITLE"
+            URL="$ISSUE_URL"
             TYPE="이슈"
-            ACTION='${{ github.event.action }}'
           else
-            LABELS='${{ toJson(github.event.pull_request.labels) }}'
-            TITLE='${{ github.event.pull_request.title }}'
-            URL='${{ github.event.pull_request.html_url }}'
+            LABELS="$PR_LABELS"
+            TITLE="$PR_TITLE"
+            URL="$PR_URL"
             TYPE="PR"
-            ACTION='${{ github.event.action }}'
           fi
+
+          case "$ACTION" in
+            opened)            ACTION_KO="생성" ;;
+            closed)            ACTION_KO="종료" ;;
+            reopened)          ACTION_KO="재열림" ;;
+            ready_for_review)  ACTION_KO="리뷰 요청" ;;
+            labeled)           ACTION_KO="라벨 추가" ;;
+            *)                 ACTION_KO="$ACTION" ;;
+          esac
+
+          echo "Action: $ACTION ($ACTION_KO)"
+          echo "Detected labels: $LABELS"
+          echo "Just-added label: $ADDED_LABEL"
 
           WEBHOOK=""
-          if echo "$LABELS" | grep -q '"frontend"'; then
-            WEBHOOK="${{ secrets.DISCORD_WEBHOOK_FRONTEND }}"
-          elif echo "$LABELS" | grep -q '"backend"'; then
-            WEBHOOK="${{ secrets.DISCORD_WEBHOOK_BACKEND }}"
-          elif echo "$LABELS" | grep -q '"ai"'; then
-            WEBHOOK="${{ secrets.DISCORD_WEBHOOK_AI }}"
+          if [ "$ACTION" = "labeled" ]; then
+            # 방금 붙은 라벨로만 라우팅 (라우팅 라벨이 아니면 skip)
+            case "$ADDED_LABEL" in
+              frontend) WEBHOOK="$WEBHOOK_FRONTEND" ;;
+              backend)  WEBHOOK="$WEBHOOK_BACKEND"  ;;
+              ai)       WEBHOOK="$WEBHOOK_AI"       ;;
+              *) echo "Non-routing label added; skipping." ;;
+            esac
+          else
+            # closed / reopened / ready_for_review: 현재 라벨 스캔 (우선순위 FE > BE > AI)
+            if echo "$LABELS" | grep -q '"frontend"'; then
+              WEBHOOK="$WEBHOOK_FRONTEND"
+            elif echo "$LABELS" | grep -q '"backend"'; then
+              WEBHOOK="$WEBHOOK_BACKEND"
+            elif echo "$LABELS" | grep -q '"ai"'; then
+              WEBHOOK="$WEBHOOK_AI"
+            fi
           fi
 
-          echo "webhook=$WEBHOOK" >> $GITHUB_OUTPUT
-          echo "title=$TITLE" >> $GITHUB_OUTPUT
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "type=$TYPE" >> $GITHUB_OUTPUT
-          echo "action=$ACTION" >> $GITHUB_OUTPUT
+          if [ -n "$WEBHOOK" ]; then
+            echo "Webhook resolved: yes"
+          else
+            echo "Webhook resolved: no (will skip notify step)"
+          fi
+
+          # heredoc으로 multiline-safe 출력
+          {
+            echo "webhook<<__EOF__"
+            echo "$WEBHOOK"
+            echo "__EOF__"
+            echo "title<<__EOF__"
+            echo "$TITLE"
+            echo "__EOF__"
+            echo "url<<__EOF__"
+            echo "$URL"
+            echo "__EOF__"
+            echo "type=$TYPE"
+            echo "action_ko=$ACTION_KO"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Send notification to Discord
         if: steps.route.outputs.webhook != ''
+        env:
+          WEBHOOK: ${{ steps.route.outputs.webhook }}
+          TYPE: ${{ steps.route.outputs.type }}
+          ACTION_KO: ${{ steps.route.outputs.action_ko }}
+          TITLE: ${{ steps.route.outputs.title }}
+          URL: ${{ steps.route.outputs.url }}
         run: |
+          PAYLOAD=$(jq -nc \
+            --arg type "$TYPE" \
+            --arg action "$ACTION_KO" \
+            --arg title "$TITLE" \
+            --arg url "$URL" \
+            '{content: ("**[\($type) \($action)]** \($title)\n\($url)")}')
+
           curl -H "Content-Type: application/json" \
                -X POST \
-               -d "{\"content\":\"**[${{ steps.route.outputs.type }} ${{ steps.route.outputs.action }}]** ${{ steps.route.outputs.title }}\n${{ steps.route.outputs.url }}\"}" \
-               "${{ steps.route.outputs.webhook }}"
+               -d "$PAYLOAD" \
+               "$WEBHOOK"
