@@ -1,6 +1,7 @@
 """Alembic env (async) — see ADR-009."""
 
 import asyncio
+import sys
 from logging.config import fileConfig
 
 from alembic import context
@@ -13,6 +14,11 @@ from core.auth.models import AuthIdentity, User  # noqa: E402, F401
 from core.config import settings
 from core.db import Base
 from core.push.models import DeviceToken  # noqa: E402, F401
+from features.growth.models import (  # noqa: E402, F401
+    ConceptMastery,
+    PromotionTestAttempt,
+    TierState,
+)
 from features.learning.models import ChatMessage, ChatSession  # noqa: E402, F401
 from features.onboarding.models import (  # noqa: E402, F401
     OnboardingSurveyAnswer,
@@ -21,6 +27,9 @@ from features.onboarding.models import (  # noqa: E402, F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
+
+if sys.platform == "win32" and hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

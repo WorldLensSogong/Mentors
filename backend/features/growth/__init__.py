@@ -1,3 +1,3 @@
-from .router import router
+"""Growth feature package."""
 
-__all__ = ["router"]
+__all__: list[str] = []
