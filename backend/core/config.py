@@ -25,9 +25,10 @@ class Settings(BaseSettings):
     google_client_secret: str
     google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
 
-    llm_provider: Literal["openai", "anthropic"] = "openai"
+    llm_provider: Literal["openai", "anthropic", "google"] = "google"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    gemini_api_key: str | None = None
     llm_stream_timeout_s: int = 60
 
     chroma_host: str = "localhost"

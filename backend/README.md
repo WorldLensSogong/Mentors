@@ -35,7 +35,7 @@ uv run uvicorn main:app --reload             # 앱 실행
 키가 없어도 앱은 부팅됨 — 해당 기능만 비활성화. 사용하려면 다음 채우기:
 - `JWT_SECRET` — 32+ 바이트 랜덤 (필수)
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — OAuth 사용 시
-- `OPENAI_API_KEY` 또는 `ANTHROPIC_API_KEY` — LLM 사용 시
+- `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` — LLM 사용 시 (기본 provider: `google`. Anthropic은 chat만 가능 — RAG 임베딩에는 별도로 google/openai 키 필요)
 - `FCM_CREDENTIALS_PATH` — 푸시 알림 사용 시
 
 ---

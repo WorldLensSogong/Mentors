@@ -13,6 +13,7 @@ from core.auth.models import AuthIdentity, User  # noqa: E402, F401
 from core.config import settings
 from core.db import Base
 from core.push.models import DeviceToken  # noqa: E402, F401
+from features.learning.models import ChatMessage, ChatSession  # noqa: E402, F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

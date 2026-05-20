@@ -1,7 +1,8 @@
 """LLM provider 추상화 (§4.7, ADR-010, ADR-012).
 
-OpenAI / Anthropic 둘 다 지원. embed()는 OpenAI 전용 (Anthropic은 native 임베딩 없음).
-chat()/chat_stream()은 settings.llm_provider에 따라 분기.
+OpenAI / Anthropic / Google Gemini 셋 다 지원. chat()/chat_stream()/embed() 모두
+settings.llm_provider에 따라 분기 (Anthropic은 native 임베딩이 없으므로 embed는
+google/openai 선택 필요).
 """
 
 from __future__ import annotations
@@ -25,12 +26,15 @@ logger = logging.getLogger("llm")
 DEFAULT_OPENAI_CHAT_MODEL = "gpt-4o-mini"
 DEFAULT_OPENAI_EMBED_MODEL = "text-embedding-3-small"
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_EMBED_MODEL = "gemini-embedding-001"
 
 
 class LLMClient:
     def __init__(self) -> None:
         self._openai: AsyncOpenAI | None = None
         self._anthropic: AsyncAnthropic | None = None
+        self._google: Any | None = None
 
         if settings.openai_api_key:
             from openai import AsyncOpenAI
@@ -42,9 +46,14 @@ class LLMClient:
 
             self._anthropic = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
+        if settings.gemini_api_key:
+            from google import genai
+
+            self._google = genai.Client(api_key=settings.gemini_api_key)
+
     @property
     def configured(self) -> bool:
-        return self._openai is not None or self._anthropic is not None
+        return self._openai is not None or self._anthropic is not None or self._google is not None
 
     async def chat(
         self,
@@ -57,6 +66,8 @@ class LLMClient:
             return await self._openai_chat(messages, model, temperature, max_tokens)
         if settings.llm_provider == "anthropic" and self._anthropic is not None:
             return await self._anthropic_chat(messages, model, temperature, max_tokens)
+        if settings.llm_provider == "google" and self._google is not None:
+            return await self._google_chat(messages, model, temperature, max_tokens)
         raise ExternalServiceError(f"{settings.llm_provider} chat not configured (missing API key)")
 
     async def chat_stream(
@@ -76,23 +87,37 @@ class LLMClient:
             ):
                 yield chunk
             return
+        if settings.llm_provider == "google" and self._google is not None:
+            async for chunk in self._google_chat_stream(messages, model, temperature, max_tokens):
+                yield chunk
+            return
         raise ExternalServiceError(
             f"{settings.llm_provider} chat_stream not configured (missing API key)"
         )
 
     async def embed(self, text: str) -> list[float]:
-        if self._openai is None:
+        if settings.llm_provider == "openai" and self._openai is not None:
+            try:
+                resp = await self._openai.embeddings.create(
+                    model=DEFAULT_OPENAI_EMBED_MODEL,
+                    input=text,
+                )
+            except Exception as e:
+                raise ExternalServiceError(f"OpenAI embed failed: {e}") from e
+            return list(resp.data[0].embedding)
+
+        if settings.llm_provider == "google" and self._google is not None:
+            return await self._google_embed(text)
+
+        if settings.llm_provider == "anthropic":
             raise ExternalServiceError(
-                "embed() requires OPENAI_API_KEY (Anthropic has no native embeddings)"
+                "embed() not available for Anthropic (no native embeddings); "
+                "set LLM_PROVIDER=google or openai"
             )
-        try:
-            resp = await self._openai.embeddings.create(
-                model=DEFAULT_OPENAI_EMBED_MODEL,
-                input=text,
-            )
-        except Exception as e:
-            raise ExternalServiceError(f"OpenAI embed failed: {e}") from e
-        return list(resp.data[0].embedding)
+
+        raise ExternalServiceError(
+            f"{settings.llm_provider} embed not configured (missing API key)"
+        )
 
     # --- OpenAI ---
 
@@ -238,6 +263,111 @@ class LLMClient:
                 "completion_tokens": final.usage.output_tokens,
             },
         )
+
+    # --- Google Gemini ---
+
+    @staticmethod
+    def _to_google_contents(
+        messages: list[Message],
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        system_parts = [m.content for m in messages if m.role == MessageRole.SYSTEM]
+        system = "\n\n".join(system_parts) if system_parts else None
+
+        contents = []
+        for m in messages:
+            if m.role == MessageRole.SYSTEM:
+                continue
+            role = "model" if m.role == MessageRole.ASSISTANT else "user"
+            contents.append({"role": role, "parts": [{"text": m.content}]})
+        return (system, contents)
+
+    async def _google_chat(
+        self,
+        messages: list[Message],
+        model: str | None,
+        temperature: float,
+        max_tokens: int,
+    ) -> ChatResponse:
+        assert self._google is not None
+        from google.genai import types
+
+        system, contents = self._to_google_contents(messages)
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+        if system is not None:
+            config.system_instruction = system
+
+        try:
+            resp = await self._google.aio.models.generate_content(
+                model=model or DEFAULT_GEMINI_MODEL,
+                contents=contents,
+                config=config,
+            )
+        except Exception as e:
+            raise ExternalServiceError(f"Google Gemini chat failed: {e}") from e
+
+        usage = getattr(resp, "usage_metadata", None)
+        return ChatResponse(
+            text=resp.text or "",
+            model=model or DEFAULT_GEMINI_MODEL,
+            prompt_tokens=usage.prompt_token_count if usage else 0,
+            completion_tokens=usage.candidates_token_count if usage else 0,
+        )
+
+    async def _google_chat_stream(
+        self,
+        messages: list[Message],
+        model: str | None,
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncIterator[StreamChunk]:
+        assert self._google is not None
+        from google.genai import types
+
+        system, contents = self._to_google_contents(messages)
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+        if system is not None:
+            config.system_instruction = system
+
+        try:
+            stream = await self._google.aio.models.generate_content_stream(
+                model=model or DEFAULT_GEMINI_MODEL,
+                contents=contents,
+                config=config,
+            )
+        except Exception as e:
+            raise ExternalServiceError(f"Google Gemini stream init failed: {e}") from e
+
+        usage_dict: dict[str, Any] | None = None
+        async for chunk in stream:
+            if chunk.text:
+                yield StreamChunk(delta=chunk.text, done=False)
+            usage = getattr(chunk, "usage_metadata", None)
+            if usage is not None:
+                usage_dict = {
+                    "prompt_tokens": usage.prompt_token_count,
+                    "completion_tokens": usage.candidates_token_count,
+                }
+
+        yield StreamChunk(delta="", done=True, usage=usage_dict)
+
+    async def _google_embed(self, text: str) -> list[float]:
+        assert self._google is not None
+        try:
+            resp = await self._google.aio.models.embed_content(
+                model=DEFAULT_GEMINI_EMBED_MODEL,
+                contents=[text],
+            )
+        except Exception as e:
+            raise ExternalServiceError(f"Google Gemini embed failed: {e}") from e
+        if not resp.embeddings or not resp.embeddings[0].values:
+            raise ExternalServiceError("Google Gemini embed returned no embedding")
+        return list(resp.embeddings[0].values)
 
 
 llm = LLMClient()
