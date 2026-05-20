@@ -1,8 +1,13 @@
 import { useEffect } from 'react';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import {
+  createNativeStackNavigator,
+  type NativeStackScreenProps,
+} from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
+import { getGrowthApiErrorMessage, getGrowthProgress } from '@/features/growth/api';
+import { GrowthProgressCard } from '@/features/growth/components/GrowthProgressCard';
 import { getOnboardingStatus } from '@/features/onboarding/api';
 import {
   getExperienceLevelLabel,
@@ -13,18 +18,26 @@ import {
 } from '@/features/onboarding/data';
 import { getMentorById } from '@/features/onboarding/logic';
 import { OnboardingScreen } from '@/features/onboarding/screens/OnboardingScreen';
+import { PromotionTestScreen } from '@/features/promotion-test/screens/PromotionTestScreen';
 import { useUserStore } from '@/store/userStore';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-function HomeScreen() {
+function HomeScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Home'>) {
+  const accessToken = useUserStore((state) => state.accessToken);
   const onboardingProfile = useUserStore((state) => state.onboardingProfile);
   const onboardingSource = useUserStore((state) => state.onboardingSource);
   const resetOnboarding = useUserStore((state) => state.resetOnboarding);
   const selectedMentor = onboardingProfile
     ? getMentorById(onboardingProfile.selectedMentorId)
     : null;
+  const growthProgressQuery = useQuery({
+    queryKey: ['growth-progress', accessToken],
+    queryFn: getGrowthProgress,
+    enabled: Boolean(accessToken),
+    retry: 0,
+  });
 
   return (
     <ScrollView contentContainerStyle={styles.homeContainer}>
@@ -89,6 +102,21 @@ function HomeScreen() {
         </View>
       )}
 
+      <GrowthProgressCard
+        progress={growthProgressQuery.data ?? null}
+        isLoading={growthProgressQuery.isLoading}
+        errorMessage={
+          growthProgressQuery.error
+            ? getGrowthApiErrorMessage(
+                growthProgressQuery.error,
+                '성장 현황을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
+              )
+            : null
+        }
+        requiresAuth={!accessToken}
+        onPressPromotionTest={() => navigation.navigate('PromotionTest')}
+      />
+
       <Pressable onPress={resetOnboarding} style={styles.resetButton}>
         <Text style={styles.resetButtonText}>온보딩 다시 보기</Text>
       </Pressable>
@@ -133,7 +161,20 @@ export function RootNavigator() {
           )}
         </Stack.Screen>
       ) : hasCompletedOnboarding ? (
-        <Stack.Screen name="Home" component={HomeScreen} />
+        <>
+          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen
+            name="PromotionTest"
+            component={PromotionTestScreen}
+            options={{
+              headerShown: true,
+              title: '승급시험',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.text,
+            }}
+          />
+        </>
       ) : (
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       )}
