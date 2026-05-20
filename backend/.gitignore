@@ -44,3 +44,6 @@ Thumbs.db
 *.sqlite
 chromadata/
 pgdata/
+
+# 로컬 수동 스모크 클라이언트
+_smoke/
