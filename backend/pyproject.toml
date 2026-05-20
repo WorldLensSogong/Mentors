@@ -21,6 +21,7 @@ dependencies = [
     # LLM providers
     "openai>=1.55",
     "anthropic>=0.40",
+    "google-genai>=0.5",
     "tiktoken>=0.8",
     # Auth
     "python-jose[cryptography]>=3.3",
@@ -75,7 +76,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["migrations/"]
 
 [[tool.mypy.overrides]]
-module = ["chromadb.*", "apscheduler.*", "firebase_admin.*", "jose.*"]
+module = ["chromadb.*", "apscheduler.*", "firebase_admin.*", "jose.*", "google.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
