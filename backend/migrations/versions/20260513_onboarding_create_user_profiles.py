@@ -1,7 +1,7 @@
 """onboarding: create user_profiles and onboarding_survey_answers
 
 Revision ID: 20260513_onboarding
-Revises: 20260510_core_devices
+Revises: 20260519_learning_init_chat
 Create Date: 2026-05-13
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260513_onboarding"
-down_revision: str | Sequence[str] | None = "20260510_core_devices"
+down_revision: str | Sequence[str] | None = "20260519_learning_init_chat"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
