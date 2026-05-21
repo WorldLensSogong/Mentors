@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.contracts import (
@@ -360,8 +361,16 @@ async def _ensure_tier_state(db: AsyncSession, user_id: UserId) -> tuple[TierSta
         progress_percent=snapshot.progress_percent,
     )
     db.add(state)
-    await db.flush()
-    return state, True
+    try:
+        await db.flush()
+        return state, True
+    except IntegrityError:
+        # A concurrent event handler may have inserted the initial tier state first.
+        await db.rollback()
+        state = await db.get(TierState, int(user_id))
+        if state is None:
+            raise
+        return state, False
 
 
 async def _list_mastered_concept_ids(

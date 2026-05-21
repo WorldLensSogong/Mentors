@@ -1,24 +1,24 @@
-"""투자 개념 커리큘럼 — 멘토(투자 전략)별 개념 그래프.
+"""투자 개념 커리큘럼 - 멘토(투자 전략)별 개념 그래프.
 
 owner: learning
 관련 FR: FR-02, UC-04
 
 각 Concept은 MentorStrategy에 귀속된다. 같은 사용자가 멘토를 바꿔
 대화하면 다른 커리큘럼이 적용된다. (단, MVP 시드는 VALUE만 채워져 있고
-나머지 전략은 비어있다 — 빈 전략의 채팅은 커리큘럼 컨텍스트만 빠진 채로 정상 동작.)
+나머지 전략은 비어있다 - 빈 전략의 채팅은 커리큘럼 컨텍스트만 빠진 채로 정상 동작.)
 
 이 모듈은 개념 데이터·시드·조회(`get_concept`/`list_concepts_for_strategy`)
 + **위치 산정**(`get_position`)을 담당한다. 위치는 (티어 + 마스터한 개념)으로 결정되며,
-티어·마스터 정보는 `growth_dep.reader()`로 위임 — 성장동 미등록 시 더미가 안전한
+티어·마스터 정보는 `growth_dep.reader()`로 위임 - 성장동 미등록 시 더미가 안전한
 기본값(T1·빈셋)을 돌려준다.
 
-**퀴즈 카탈로그는 `quizzes.py`로 분리됨** — 라우터에서는 `quizzes.get_quiz/grade_quiz`를 호출.
+**퀴즈 카탈로그는 `quizzes.py`로 분리됨** - 라우터에서는 `quizzes.get_quiz/grade_quiz`를 호출.
 
 ID 네임스페이스 (전략별 100단위 구획):
-    VALUE     1–99
-    GROWTH    100–199
-    DIVIDEND  200–299
-    MOMENTUM  300–399
+    VALUE     1-99
+    GROWTH    100-199
+    DIVIDEND  200-299
+    MOMENTUM  300-399
 """
 
 from pydantic import BaseModel, Field
@@ -27,8 +27,6 @@ from core.contracts import ConceptId, MentorStrategy, Tier, UserId
 from core.exceptions import NotFoundError
 
 from . import growth_dep
-
-# --- 모델 ---
 
 
 class Concept(BaseModel):
@@ -45,7 +43,7 @@ class Concept(BaseModel):
 
 
 class CurriculumPosition(BaseModel):
-    """사용자의 현재 커리큘럼 위치 — (티어 + 마스터한 개념)으로 산정.
+    """사용자의 현재 커리큘럼 위치 - (티어 + 마스터한 개념)으로 산정.
 
     - available: 사용자의 티어 이상이고 모든 선수 개념이 마스터된 개념들
     - locked: 그 외 (티어 미달 또는 선수 미충족)
@@ -62,15 +60,11 @@ class CurriculumPosition(BaseModel):
     current_concept: Concept | None
 
 
-# --- 시드 데이터: VALUE 23개념 (T1×8, T2×6, T3×5, T4×3, T5×1) ---
-
-
 def _cid(n: int) -> ConceptId:
     return ConceptId(n)
 
 
 _CONCEPTS: dict[ConceptId, Concept] = {
-    # ---------- T1: 기초 (8) ----------
     _cid(1): Concept(
         id=_cid(1),
         mentor_strategy=MentorStrategy.VALUE,
@@ -111,7 +105,7 @@ _CONCEPTS: dict[ConceptId, Concept] = {
             "영업이익은 그 매출에서 매출원가·판관비를 뺀 영업활동의 결과이다."
         ),
         learning_objectives=[
-            "매출 → 매출총이익 → 영업이익 → 순이익의 흐름을 안다",
+            "매출 -> 매출총이익 -> 영업이익 -> 순이익의 흐름을 안다",
             "매출이 크다고 이익도 크다는 보장이 없음을 이해한다",
         ],
         keywords=["매출", "영업이익", "순이익", "원가"],
@@ -139,7 +133,7 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         tier_required=Tier.T1,
         prerequisites=[_cid(1), _cid(3)],
         summary=(
-            "PER = 주가 ÷ EPS. 현재 이익이 유지된다는 가정 하에 "
+            "PER = 주가 / EPS. 현재 이익이 유지된다는 가정 하에 "
             "투자금 회수에 걸리는 햇수의 직관적 지표."
         ),
         learning_objectives=[
@@ -193,7 +187,6 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         ],
         keywords=["안전마진", "margin of safety", "그레이엄"],
     ),
-    # ---------- T2: 중급 (6) ----------
     _cid(9): Concept(
         id=_cid(9),
         mentor_strategy=MentorStrategy.VALUE,
@@ -217,7 +210,7 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         tier_required=Tier.T2,
         prerequisites=[_cid(3), _cid(9)],
         summary=(
-            "ROE = 순이익 ÷ 자기자본. 주주가 맡긴 자본이 얼마나 효율적으로 이익을 만드는가의 지표."
+            "ROE = 순이익 / 자기자본. 주주가 맡긴 자본이 얼마나 효율적으로 이익을 만드는가의 지표."
         ),
         learning_objectives=[
             "ROE의 계산과 의미를 안다",
@@ -232,7 +225,7 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         tier_required=Tier.T2,
         prerequisites=[_cid(10)],
         summary=(
-            "부채비율 = 부채 ÷ 자본. "
+            "부채비율 = 부채 / 자본. "
             "과도한 레버리지는 호황엔 수익을 키우지만 불황엔 안전마진을 갉아먹는다."
         ),
         learning_objectives=[
@@ -289,7 +282,6 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         ],
         keywords=["탐욕", "공포", "사이클", "변동성", "역발상"],
     ),
-    # ---------- T3: 심화 (5) ----------
     _cid(15): Concept(
         id=_cid(15),
         mentor_strategy=MentorStrategy.VALUE,
@@ -297,7 +289,7 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         tier_required=Tier.T3,
         prerequisites=[_cid(10)],
         summary=(
-            "ROIC = NOPAT ÷ (자기자본+차입금). "
+            "ROIC = NOPAT / (자기자본+차입금). "
             "자본조달 구조에 영향을 적게 받는, 사업 자체의 자본효율 지표."
         ),
         learning_objectives=[
@@ -344,8 +336,8 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         tier_required=Tier.T3,
         prerequisites=[_cid(12), _cid(15)],
         summary=(
-            "① 내가 이해할 수 있는 사업 ② 장기적으로 유리한 사업 전망 "
-            "③ 유능하고 정직한 경영진 ④ 매력적인 가격."
+            "1) 내가 이해할 수 있는 사업 2) 장기적으로 유리한 사업 전망 "
+            "3) 유능하고 정직한 경영진 4) 매력적인 가격."
         ),
         learning_objectives=[
             "4원칙 각각을 설명할 수 있다",
@@ -366,7 +358,6 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         ],
         keywords=["가치함정", "value trap", "저PER함정", "구조적쇠퇴"],
     ),
-    # ---------- T4: 고급 (3) ----------
     _cid(20): Concept(
         id=_cid(20),
         mentor_strategy=MentorStrategy.VALUE,
@@ -415,7 +406,6 @@ _CONCEPTS: dict[ConceptId, Concept] = {
         ],
         keywords=["매크로", "거시경제", "환율", "사이클"],
     ),
-    # ---------- T5: 응용·토론 (1) ----------
     _cid(23): Concept(
         id=_cid(23),
         mentor_strategy=MentorStrategy.VALUE,
@@ -435,11 +425,7 @@ _CONCEPTS: dict[ConceptId, Concept] = {
 }
 
 
-# --- 공개 API ---
-
-
 def get_concept(concept_id: int) -> Concept:
-    """개념 단건 조회. 없으면 NotFoundError."""
     c = _CONCEPTS.get(ConceptId(concept_id))
     if c is None:
         raise NotFoundError(f"개념 {concept_id}을(를) 찾을 수 없습니다")
@@ -447,7 +433,6 @@ def get_concept(concept_id: int) -> Concept:
 
 
 def list_concepts_for_strategy(strategy: MentorStrategy) -> list[Concept]:
-    """전략(멘토)에 속한 모든 개념을 tier_required 오름차순으로 반환."""
     return sorted(
         (c for c in _CONCEPTS.values() if c.mentor_strategy == strategy),
         key=lambda c: (c.tier_required.value, c.id),
@@ -455,21 +440,12 @@ def list_concepts_for_strategy(strategy: MentorStrategy) -> list[Concept]:
 
 
 def _is_available(concept: Concept, user_tier: Tier, mastered: set[ConceptId]) -> bool:
-    """티어 충족 + 모든 선수 마스터 시 available."""
     tier_ok = concept.tier_required.value <= user_tier.value
     prereqs_ok = all(p in mastered for p in concept.prerequisites)
     return tier_ok and prereqs_ok
 
 
 async def get_position(user_id: UserId, strategy: MentorStrategy) -> CurriculumPosition:
-    """사용자의 현재 커리큘럼 위치 산정.
-
-    성장도(tier·마스터한 개념)는 growth_dep.reader()로 조회 — 성장동
-    미등록 시 더미가 T1·빈셋을 반환하므로 안전하다.
-
-    시드가 빈 전략(GROWTH/DIVIDEND/MOMENTUM 등)이면 available/locked가 빈
-    리스트, next/current가 None인 빈 Position을 반환한다.
-    """
     reader = growth_dep.reader()
     tier = await reader.get_user_tier(user_id)
     mastered = await reader.get_mastered_concepts(user_id, strategy)
@@ -477,13 +453,13 @@ async def get_position(user_id: UserId, strategy: MentorStrategy) -> CurriculumP
     all_concepts = list_concepts_for_strategy(strategy)
     available: list[Concept] = []
     locked: list[Concept] = []
-    for c in all_concepts:
-        (available if _is_available(c, tier, mastered) else locked).append(c)
+    for concept in all_concepts:
+        (available if _is_available(concept, tier, mastered) else locked).append(concept)
 
-    # 다음 추천 = available 중 아직 마스터 안 한 가장 앞 개념
-    # (all_concepts가 이미 tier→id 오름차순이므로 available도 동일 순서)
-    next_recommended: Concept | None = next((c for c in available if c.id not in mastered), None)
-    # MVP: current_concept = next_recommended. detector(7단계)가 분리 책임.
+    next_recommended: Concept | None = next(
+        (concept for concept in available if concept.id not in mastered),
+        None,
+    )
     current_concept = next_recommended
 
     return CurriculumPosition(
