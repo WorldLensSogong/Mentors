@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.contracts import Tier
+from core.contracts import MentorStrategy, Tier
+from features.learning import curriculum
 
 
 @dataclass(frozen=True)
@@ -26,43 +27,20 @@ class PromotionQuestion:
     correct_choice_id: str
 
 
-_TIER_CONCEPTS: dict[Tier, tuple[TierConcept, ...]] = {
-    Tier.T1: (
-        TierConcept(101, "margin_of_safety", "Margin of safety"),
-        TierConcept(102, "intrinsic_value", "Intrinsic value"),
-        TierConcept(103, "long_term_horizon", "Long-term horizon"),
-        TierConcept(104, "volatility_vs_risk", "Volatility versus risk"),
-        TierConcept(105, "business_quality", "Business quality"),
-    ),
-    Tier.T2: (
-        TierConcept(201, "debate_tradeoff", "Debate trade-off framing"),
-        TierConcept(202, "counter_argument", "Counter-argument reading"),
-        TierConcept(203, "position_sizing", "Position sizing basics"),
-        TierConcept(204, "portfolio_balance", "Portfolio balance"),
-        TierConcept(205, "thesis_consistency", "Thesis consistency"),
-    ),
-    Tier.T3: (
-        TierConcept(301, "mentor_diversity", "Mentor diversity"),
-        TierConcept(302, "sector_rotation", "Sector rotation signals"),
-        TierConcept(303, "macro_filtering", "Macro filtering"),
-        TierConcept(304, "scenario_mapping", "Scenario mapping"),
-        TierConcept(305, "allocation_discipline", "Allocation discipline"),
-    ),
-    Tier.T4: (
-        TierConcept(401, "rate_sensitivity", "Rate sensitivity"),
-        TierConcept(402, "macro_regime", "Macro regime"),
-        TierConcept(403, "earnings_quality", "Earnings quality"),
-        TierConcept(404, "stress_testing", "Stress testing"),
-        TierConcept(405, "cross_cycle_judgment", "Cross-cycle judgment"),
-    ),
-    Tier.T5: (
-        TierConcept(501, "independent_thesis", "Independent thesis"),
-        TierConcept(502, "framework_composition", "Framework composition"),
-        TierConcept(503, "risk_governance", "Risk governance"),
-        TierConcept(504, "market_context_synthesis", "Market-context synthesis"),
-        TierConcept(505, "self_directed_reflection", "Self-directed reflection"),
-    ),
-}
+def _build_tier_concepts() -> dict[Tier, tuple[TierConcept, ...]]:
+    concepts_by_tier: dict[Tier, list[TierConcept]] = {tier: [] for tier in Tier}
+    for concept in curriculum.list_concepts_for_strategy(MentorStrategy.VALUE):
+        concepts_by_tier[concept.tier_required].append(
+            TierConcept(
+                int(concept.id),
+                f"value_concept_{int(concept.id)}",
+                concept.name,
+            )
+        )
+    return {tier: tuple(items) for tier, items in concepts_by_tier.items()}
+
+
+_TIER_CONCEPTS = _build_tier_concepts()
 
 
 _PROMOTION_QUESTIONS: dict[Tier, tuple[PromotionQuestion, ...]] = {

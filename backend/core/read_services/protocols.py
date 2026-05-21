@@ -9,7 +9,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from core.contracts import NewsId, Tier, UserId
+from core.contracts import ConceptId, MentorStrategy, NewsId, Tier, UserId
 
 
 class NewsRef(BaseModel):
@@ -28,7 +28,18 @@ class ContentReader(Protocol):
 
 
 class GrowthReader(Protocol):
-    """성장 동이 구현 — 향후 확장 예시 (v2)."""
+    """성장 동이 구현. 다른 동은 자기 동의 fallback 레이어를 거쳐 호출.
+
+    학습 동의 경우 `features/learning/growth_dep.reader()`가 등록 여부를
+    체크해 등록 안 됐을 때 NullGrowthReader(T1·빈 마스터리)를 돌려준다.
+    그러므로 본 Protocol에 메서드를 추가할 때는 NullGrowthReader도 함께 갱신.
+    """
+
+    async def get_user_tier(self, user_id: UserId) -> Tier: ...
+
+    async def get_mastered_concepts(
+        self, user_id: UserId, strategy: MentorStrategy
+    ) -> set[ConceptId]: ...
 
     async def get_tier_distribution(self) -> dict[Tier, int]: ...
 

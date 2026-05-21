@@ -35,11 +35,15 @@ def test_learning_quiz_catalog_route_returns_current_tier_quizzes(
 ) -> None:
     learning_router = importlib.import_module("features.learning.router")
 
-    class _FakeUserContext:
-        async def get_tier(self, _user_id: int) -> Tier:
+    class _FakeGrowthReader:
+        async def get_user_tier(self, _user_id: int) -> Tier:
             return Tier.T1
 
-    monkeypatch.setattr(learning_router, "user_context", _FakeUserContext(), raising=False)
+    monkeypatch.setattr(
+        learning_router.growth_dep,
+        "reader",
+        lambda: _FakeGrowthReader(),
+    )
 
     app = _build_app()
     app.dependency_overrides[get_current_user] = _fake_user
@@ -53,4 +57,4 @@ def test_learning_quiz_catalog_route_returns_current_tier_quizzes(
     assert response.status_code == 200
     body = response.json()
     assert body["tier"] == "T1"
-    assert [item["concept_id"] for item in body["quizzes"]] == [101, 102, 103, 104, 105]
+    assert [item["concept_id"] for item in body["quizzes"]] == [1, 2, 3, 4, 5, 6, 7, 8]

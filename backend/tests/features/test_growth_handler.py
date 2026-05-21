@@ -40,14 +40,14 @@ class _FakeSession:
 async def test_process_concept_mastered_event_is_idempotent_for_duplicate_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mastered_ids = {101, 102, 103}
+    mastered_ids = {1, 2, 3, 4, 5, 6}
     fake_db = _FakeSession(mastered_ids)
     fake_state = SimpleNamespace(
         current_tier=Tier.T1.value,
         promotion_eligible_at=None,
-        mastered_concepts=3,
-        total_concepts=5,
-        progress_percent=60,
+        mastered_concepts=6,
+        total_concepts=8,
+        progress_percent=75,
     )
     published_events: list[object] = []
     pushed_payloads: list[dict[str, object]] = []
@@ -77,10 +77,10 @@ async def test_process_concept_mastered_event_is_idempotent_for_duplicate_event(
     monkeypatch.setattr("features.growth.service.event_bus.publish", fake_publish)
     monkeypatch.setattr("features.growth.service.push.send_to_user", fake_push)
 
-    await process_concept_mastered_event(UserId(1), ConceptId(104), "evt_1", fake_db)
-    await process_concept_mastered_event(UserId(1), ConceptId(104), "evt_1", fake_db)
+    await process_concept_mastered_event(UserId(1), ConceptId(7), "evt_1", fake_db)
+    await process_concept_mastered_event(UserId(1), ConceptId(7), "evt_1", fake_db)
 
-    assert fake_state.progress_percent == 80
+    assert fake_state.progress_percent == 87
     assert fake_state.promotion_eligible_at is not None
     assert len(published_events) == 1
     assert len(pushed_payloads) == 1

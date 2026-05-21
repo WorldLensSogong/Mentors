@@ -1,7 +1,13 @@
 """Alembic env (async) — see ADR-009."""
 
 import asyncio
+import sys
 from logging.config import fileConfig
+
+# Windows: psycopg async가 ProactorEventLoop과 호환되지 않아 alembic이 깨짐.
+# SelectorEventLoopPolicy로 강제 (Linux/Mac은 영향 없음). 자세한 건 SETUP.md 부록.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from alembic import context
 from sqlalchemy import pool
@@ -18,7 +24,11 @@ from features.growth.models import (  # noqa: E402, F401
     PromotionTestAttempt,
     TierState,
 )
-from features.learning.models import ChatMessage, ChatSession  # noqa: E402, F401
+from features.learning.models import (  # noqa: E402, F401
+    ChatMessage,
+    ChatSession,
+    QuizAttempt,
+)
 from features.onboarding.models import (  # noqa: E402, F401
     OnboardingSurveyAnswer,
     UserProfile,

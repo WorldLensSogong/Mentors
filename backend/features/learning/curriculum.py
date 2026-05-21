@@ -1,460 +1,481 @@
-"""투자 개념 커리큘럼 및 퀴즈 카탈로그.
+"""투자 개념 커리큘럼 - 멘토(투자 전략)별 개념 그래프.
 
 owner: learning
 관련 FR: FR-02, UC-04
+
+각 Concept은 MentorStrategy에 귀속된다. 같은 사용자가 멘토를 바꿔
+대화하면 다른 커리큘럼이 적용된다. (단, MVP 시드는 VALUE만 채워져 있고
+나머지 전략은 비어있다 - 빈 전략의 채팅은 커리큘럼 컨텍스트만 빠진 채로 정상 동작.)
+
+이 모듈은 개념 데이터·시드·조회(`get_concept`/`list_concepts_for_strategy`)
++ **위치 산정**(`get_position`)을 담당한다. 위치는 (티어 + 마스터한 개념)으로 결정되며,
+티어·마스터 정보는 `growth_dep.reader()`로 위임 - 성장동 미등록 시 더미가 안전한
+기본값(T1·빈셋)을 돌려준다.
+
+**퀴즈 카탈로그는 `quizzes.py`로 분리됨** - 라우터에서는 `quizzes.get_quiz/grade_quiz`를 호출.
+
+ID 네임스페이스 (전략별 100단위 구획):
+    VALUE     1-99
+    GROWTH    100-199
+    DIVIDEND  200-299
+    MOMENTUM  300-399
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from core.contracts import Tier
+from core.contracts import ConceptId, MentorStrategy, Tier, UserId
 from core.exceptions import NotFoundError
 
-
-class QuizItem(BaseModel):
-    concept_id: int
-    concept_name: str
-    question: str
-    options: list[str]
-    correct_index: int
-    explanation: str
+from . import growth_dep
 
 
-_QUIZZES_BY_TIER: dict[Tier, tuple[QuizItem, ...]] = {
-    Tier.T1: (
-        QuizItem(
-            concept_id=101,
-            concept_name="안전마진",
-            question="안전마진을 가장 잘 설명한 것은 무엇인가요?",
-            options=[
-                "주가가 내재가치보다 충분히 낮아 실수 여지를 흡수하는 가격 완충 구간",
-                "주가가 최근 20일 평균선을 돌파한 기술적 신호",
-                "배당수익률이 국채 금리보다 높은 상태",
-                "거래량이 전일 대비 두 배로 늘어난 상태",
-            ],
-            correct_index=0,
-            explanation=(
-                "안전마진은 내재가치 대비 할인된 가격에 매수해 분석 오차와 악재를 "
-                "버틸 여유를 확보하는 개념입니다."
-            ),
+class Concept(BaseModel):
+    """학습 단위. 멘토 전략별로 분리되며 선수 관계로 그래프를 이룬다."""
+
+    id: ConceptId
+    mentor_strategy: MentorStrategy
+    name: str
+    tier_required: Tier
+    prerequisites: list[ConceptId] = Field(default_factory=list)
+    summary: str
+    learning_objectives: list[str]
+    keywords: list[str]
+
+
+class CurriculumPosition(BaseModel):
+    """사용자의 현재 커리큘럼 위치 - (티어 + 마스터한 개념)으로 산정.
+
+    - available: 사용자의 티어 이상이고 모든 선수 개념이 마스터된 개념들
+    - locked: 그 외 (티어 미달 또는 선수 미충족)
+    - next_recommended: available 중 아직 마스터하지 않은 가장 앞 개념
+    - current_concept: 현재 학습 중인 개념. MVP에서는 next_recommended와 동일.
+      7단계 concept_detector가 들어오면 대화 맥락에서 감지된 개념으로 갱신.
+    """
+
+    tier: Tier
+    mastered: set[ConceptId]
+    available: list[Concept]
+    locked: list[Concept]
+    next_recommended: Concept | None
+    current_concept: Concept | None
+
+
+def _cid(n: int) -> ConceptId:
+    return ConceptId(n)
+
+
+_CONCEPTS: dict[ConceptId, Concept] = {
+    _cid(1): Concept(
+        id=_cid(1),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="주식이란 무엇인가",
+        tier_required=Tier.T1,
+        prerequisites=[],
+        summary=(
+            "주식은 회사의 지분 일부를 소유하는 권리로, "
+            "회사가 만들어내는 미래 이익의 일부를 청구할 자격을 의미한다."
         ),
-        QuizItem(
-            concept_id=102,
-            concept_name="내재가치",
-            question="내재가치에 가장 가까운 설명은 무엇인가요?",
-            options=[
-                "전일 종가에 시장 기대감을 더한 수치",
-                "기업의 현금흐름과 자산, 경쟁력을 바탕으로 추정한 본질적 가치",
-                "실시간 호가창에서 가장 많이 체결되는 가격",
-                "애널리스트 목표가의 평균값",
-            ],
-            correct_index=1,
-            explanation=(
-                "내재가치는 시장 가격이 아니라 기업이 벌어들일 현금흐름과 자산의 질을 "
-                "바탕으로 계산한 본질적 가치입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=103,
-            concept_name="장기 투자 관점",
-            question="장기 투자 관점에 가장 잘 맞는 행동은 무엇인가요?",
-            options=[
-                "일간 변동성만 보고 매일 포지션을 바꾸는 것",
-                "단기 뉴스에 반응해 투자 논지를 자주 폐기하는 것",
-                "기업의 경쟁력과 복리 효과가 축적될 시간을 주는 것",
-                "수익이 나면 바로 전량 차익실현하는 것",
-            ],
-            correct_index=2,
-            explanation=(
-                "장기 투자 관점은 단기 가격 변동보다 사업의 경쟁력과 시간이 만드는 "
-                "복리 효과에 집중하는 태도입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=104,
-            concept_name="변동성과 리스크의 차이",
-            question="변동성과 리스크의 차이를 가장 정확히 설명한 것은 무엇인가요?",
-            options=[
-                "둘은 완전히 같은 말이며 구분할 필요가 없다.",
-                "변동성은 가격의 흔들림이고, 리스크는 영구 손실 가능성이다.",
-                "변동성은 기업 분석이고, 리스크는 차트 분석이다.",
-                "변동성은 장기 투자에서만 중요하고 리스크는 단기 투자에서만 중요하다.",
-            ],
-            correct_index=1,
-            explanation=(
-                "가격이 흔들린다고 해서 모두 리스크는 아닙니다. 리스크는 사업 훼손이나 "
-                "잘못된 투자 논지로 인한 영구 손실 가능성에 더 가깝습니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=105,
-            concept_name="좋은 비즈니스의 질",
-            question="좋은 비즈니스의 질을 판단할 때 더 중요한 질문은 무엇인가요?",
-            options=[
-                "오늘 거래대금이 가장 큰가?",
-                "최근 한 주 동안 주가가 가장 많이 올랐는가?",
-                "커뮤니티에서 가장 많이 언급되는가?",
-                "지속 가능한 경쟁우위와 현금창출력이 있는가?",
-            ],
-            correct_index=3,
-            explanation=(
-                "좋은 비즈니스의 질은 단기 주가보다 경쟁우위, 가격 결정력, 현금창출력처럼 "
-                "오랫동안 유지되는 사업 체력을 보는 개념입니다."
-            ),
-        ),
+        learning_objectives=[
+            "주식의 본질이 '지분 소유'임을 이해한다",
+            "주가는 회사 가치의 일부를 표현하는 가격임을 안다",
+        ],
+        keywords=["주식", "지분", "주주", "소유권"],
     ),
-    Tier.T2: (
-        QuizItem(
-            concept_id=201,
-            concept_name="토론의 상충관계 프레이밍",
-            question="토론에서 trade-off framing을 잘한 예시는 무엇인가요?",
-            options=[
-                "성장성과 안전성 사이에서 무엇을 우선할지 기준을 먼저 세우는 것",
-                "상대 의견을 듣지 않고 내 주장만 반복하는 것",
-                "수익률만 높으면 모든 리스크를 무시해도 된다고 보는 것",
-                "정답을 빨리 고르기 위해 기업 분석을 생략하는 것",
-            ],
-            correct_index=0,
-            explanation=(
-                "trade-off framing은 좋은 토론을 위해 어떤 장점과 비용을 맞바꾸는지 먼저 "
-                "구조화하는 과정입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=202,
-            concept_name="반대 논리 읽기",
-            question="반대 논리를 읽는 가장 건강한 방식은 무엇인가요?",
-            options=[
-                "내 논지를 강화해 주는 문장만 골라 읽는다.",
-                "반대 의견은 자신감이 떨어지므로 아예 무시한다.",
-                "내 투자 논지의 취약점을 점검하는 재료로 활용한다.",
-                "반대 의견이 나오면 즉시 전량 매도한다.",
-            ],
-            correct_index=2,
-            explanation=(
-                "반대 논리는 논지를 무너뜨리기 위한 공격이 아니라, 내 가설의 약한 고리를 "
-                "점검하는 스트레스 테스트 재료가 되어야 합니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=203,
-            concept_name="포지션 사이징 기초",
-            question="포지션 사이징의 기본 원칙에 가장 가까운 것은 무엇인가요?",
-            options=[
-                "확신이 생기면 언제나 전 재산을 한 종목에 넣는다.",
-                "확신도와 리스크를 함께 고려해 감당 가능한 크기로 비중을 정한다.",
-                "주가가 오른 종목만 비중을 무조건 늘린다.",
-                "매수 단가가 낮으면 분석 없이 비중을 키운다.",
-            ],
-            correct_index=1,
-            explanation=(
-                "포지션 사이징은 아이디어의 매력뿐 아니라 손실 가능성과 변동성을 감안해 "
-                "포트폴리오 전체에서 감당 가능한 크기로 정하는 행위입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=204,
-            concept_name="포트폴리오 균형",
-            question="포트폴리오 균형이 필요한 가장 큰 이유는 무엇인가요?",
-            options=[
-                "모든 종목의 수익률을 동일하게 만들기 위해서",
-                "하락장에서 반드시 손실을 0으로 만들기 위해서",
-                "뉴스가 많이 나오는 종목에 더 빨리 반응하기 위해서",
-                "한 개의 논지 실패가 전체 자산에 치명타가 되지 않게 하기 위해서",
-            ],
-            correct_index=3,
-            explanation=(
-                "포트폴리오 균형은 수익률 보장이 아니라, 특정 아이디어가 틀렸을 때 전체 "
-                "자산이 한 번에 무너지지 않도록 의존도를 낮추는 장치입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=205,
-            concept_name="투자 아이디어 일관성",
-            question="투자 아이디어의 일관성을 지키는 행동은 무엇인가요?",
-            options=[
-                "새로운 정보가 나오면 기존 논지와 어떻게 연결되는지 점검한다.",
-                "수익 중이면 이유가 바뀌어도 논지를 수정하지 않는다.",
-                "다른 사람이 사는 이유를 그대로 내 이유로 삼는다.",
-                "차트가 좋으면 사업 논지 없이도 계속 보유한다.",
-            ],
-            correct_index=0,
-            explanation=(
-                "일관성은 고집이 아니라, 새로운 정보가 기존 투자 논지를 강화하는지 훼손하는지 "
-                "계속 추적하는 태도입니다."
-            ),
-        ),
+    _cid(2): Concept(
+        id=_cid(2),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="채권과 주식의 차이",
+        tier_required=Tier.T1,
+        prerequisites=[_cid(1)],
+        summary=("채권은 돈을 빌려준 채권자의 청구권, 주식은 회사 지분을 가진 주주의 청구권이다."),
+        learning_objectives=[
+            "채권자와 주주의 권리 차이를 구분한다",
+            "자산군에 따른 위험-수익 구조의 차이를 이해한다",
+        ],
+        keywords=["채권", "채무", "이자", "지분"],
     ),
-    Tier.T3: (
-        QuizItem(
-            concept_id=301,
-            concept_name="멘토 관점 다양성",
-            question="여러 멘토 관점을 함께 보는 가장 좋은 이유는 무엇인가요?",
-            options=[
-                "가장 강한 어조의 멘토를 자동으로 따라가기 위해서",
-                "모순되는 의견은 모두 제거하고 하나의 문장만 남기기 위해서",
-                "같은 투자 아이디어를 서로 다른 프레임으로 검증하기 위해서",
-                "멘토 수가 많을수록 정답 확률이 자동으로 높아지기 때문에",
-            ],
-            correct_index=2,
-            explanation=(
-                "관점 다양성은 의견 수집이 목적이 아니라, 같은 논지를 다른 프레임으로 보며 "
-                "사각지대를 줄이기 위한 장치입니다."
-            ),
+    _cid(3): Concept(
+        id=_cid(3),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="매출과 이익의 차이",
+        tier_required=Tier.T1,
+        prerequisites=[],
+        summary=(
+            "매출은 판매로 들어온 돈, "
+            "영업이익은 그 매출에서 매출원가·판관비를 뺀 영업활동의 결과이다."
         ),
-        QuizItem(
-            concept_id=302,
-            concept_name="섹터 로테이션 신호",
-            question="섹터 로테이션 신호를 가장 적절하게 활용하는 방식은 무엇인가요?",
-            options=[
-                "섹터 이동만 보면 기업 분석 없이도 바로 매수한다.",
-                "기존 투자 논지에 영향을 주는 배경 신호로 참고한다.",
-                "한 번 신호가 나오면 장기간 무조건 유지한다.",
-                "로테이션이 보이면 기존 포트폴리오는 모두 청산한다.",
-            ],
-            correct_index=1,
-            explanation=(
-                "섹터 로테이션은 종목의 본질을 대체하는 신호가 아니라, 시장의 관심 이동이 "
-                "내 논지에 어떤 맥락을 더하는지 살피는 보조 정보입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=303,
-            concept_name="거시 변수 필터링",
-            question="거시 변수 필터링의 목적에 가장 가까운 것은 무엇인가요?",
-            options=[
-                "금리, 환율, 유동성 같은 환경 변수가 논지에 주는 영향을 걸러보는 것",
-                "거시 지표만 맞으면 기업 재무는 보지 않아도 된다고 판단하는 것",
-                "모든 투자 판단을 환율 하나로만 설명하는 것",
-                "거시 지표 발표 직후 단타 전략만 강화하는 것",
-            ],
-            correct_index=0,
-            explanation=(
-                "거시 변수 필터링은 투자 아이디어가 특정 환경 변화에 얼마나 민감한지 점검해 "
-                "논지의 적용 범위를 더 명확히 만드는 과정입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=304,
-            concept_name="시나리오 매핑",
-            question="시나리오 매핑을 하는 가장 좋은 이유는 무엇인가요?",
-            options=[
-                "미래를 단 하나의 경로로 확정하기 위해서",
-                "가능한 여러 결과를 미리 그려 보고 대응 기준을 세우기 위해서",
-                "최악의 경우는 비현실적이므로 제외하기 위해서",
-                "차트 패턴이 복잡해질수록 설명을 생략하기 위해서",
-            ],
-            correct_index=1,
-            explanation=(
-                "시나리오 매핑은 예언이 아니라, 다른 결과가 나와도 당황하지 않도록 조건별 "
-                "대응 기준을 준비하는 작업입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=305,
-            concept_name="자산 배분 규율",
-            question="자산 배분 규율이 있다는 뜻에 가장 가까운 것은 무엇인가요?",
-            options=[
-                "새 아이디어가 뜨면 기존 규칙 없이 바로 갈아탄다.",
-                "모든 아이디어에 언제나 같은 비중을 준다.",
-                "수익률이 높은 종목만 계속 비중을 키운다.",
-                "확신도와 리스크 기준에 따라 자산을 배분하고 정기적으로 점검한다.",
-            ],
-            correct_index=3,
-            explanation=(
-                "배분 규율은 시장 분위기에 따라 흔들리지 않고, 미리 정한 원칙에 따라 비중을 "
-                "조정하는 습관을 뜻합니다."
-            ),
-        ),
+        learning_objectives=[
+            "매출 -> 매출총이익 -> 영업이익 -> 순이익의 흐름을 안다",
+            "매출이 크다고 이익도 크다는 보장이 없음을 이해한다",
+        ],
+        keywords=["매출", "영업이익", "순이익", "원가"],
     ),
-    Tier.T4: (
-        QuizItem(
-            concept_id=401,
-            concept_name="금리 민감도",
-            question="금리 민감도를 이해하는 핵심 질문은 무엇인가요?",
-            options=[
-                "금리 변화가 이 기업의 밸류에이션과 현금흐름에 어떤 영향을 주는가?",
-                "금리 발표 직후 거래량이 얼마나 늘었는가?",
-                "금리 뉴스가 나온 날 차트가 얼마나 급등했는가?",
-                "금리가 오르면 어떤 종목이 가장 많이 검색되는가?",
-            ],
-            correct_index=0,
-            explanation=(
-                "금리 민감도는 시장 반응 자체보다, 금리 변화가 사업 가치와 자금조달 구조에 "
-                "어떤 압력을 주는지 해석하는 능력입니다."
-            ),
+    _cid(4): Concept(
+        id=_cid(4),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="인플레이션과 화폐가치",
+        tier_required=Tier.T1,
+        prerequisites=[],
+        summary=(
+            "인플레이션은 현금의 구매력을 시간이 지날수록 줄인다. "
+            "저축만으로는 실질 자산이 보호되지 않는다."
         ),
-        QuizItem(
-            concept_id=402,
-            concept_name="매크로 국면",
-            question="매크로 국면을 읽는 올바른 태도는 무엇인가요?",
-            options=[
-                "매크로가 맞으면 기업 분석은 불필요하다고 본다.",
-                "국면이 바뀌어도 모든 기업을 같은 기준으로만 본다.",
-                "현재 환경이 어떤 사업과 논지에 유리하거나 불리한지 프레임으로 활용한다.",
-                "매크로 해석이 어려우면 무조건 현금 100%로 유지한다.",
-            ],
-            correct_index=2,
-            explanation=(
-                "매크로 국면은 개별 기업 분석을 대체하는 것이 아니라, 어떤 논지가 지금 환경에서 "
-                "더 잘 작동하거나 더 취약한지 보는 배경 프레임입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=403,
-            concept_name="이익의 질",
-            question="이익의 질을 점검할 때 더 중요한 것은 무엇인가요?",
-            options=[
-                "순이익이 한 분기만 급증했는지 여부",
-                "현금흐름과 회계상 이익이 얼마나 건강하게 연결되는지",
-                "주가가 실적 발표 후 하루 동안 얼마나 올랐는지",
-                "SNS에서 실적 기사에 붙은 댓글 수가 많은지",
-            ],
-            correct_index=1,
-            explanation=(
-                "이익의 질은 숫자의 크기보다, 그 이익이 현금으로 이어지고 반복 가능한 구조인지 "
-                "확인하는 개념입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=404,
-            concept_name="스트레스 테스트",
-            question="투자 논지의 스트레스 테스트란 무엇인가요?",
-            options=[
-                "가장 좋은 시나리오만 정교하게 계산하는 것",
-                "차트가 흔들릴 때마다 손절 가격만 낮추는 것",
-                "나쁜 상황이 와도 논지가 버틸 수 있는지 점검하는 것",
-                "리스크가 보이면 바로 전량 매도하는 것",
-            ],
-            correct_index=2,
-            explanation=(
-                "스트레스 테스트는 낙관 시나리오를 더 믿기 위한 절차가 아니라, 악조건에서도 "
-                "논지가 유지되는지 확인하는 방어적 검증 과정입니다."
-            ),
-        ),
-        QuizItem(
-            concept_id=405,
-            concept_name="사이클 전반의 판단",
-            question="사이클 전반의 판단력이 있다는 말에 가장 가까운 것은 무엇인가요?",
-            options=[
-                "모든 시장에서 항상 같은 종목만 보유하는 것",
-                "어떤 국면에서도 오직 단기 차트로만 판단하는 것",
-                "경기순환을 완벽히 예측해 최고점과 최저점을 맞히는 것",
-                "같은 원칙을 시장 국면에 맞게 조정해 적용하는 것",
-            ],
-            correct_index=3,
-            explanation=(
-                "사이클 전반의 판단은 예측 정확도 경쟁이 아니라, 같은 투자 원칙을 다른 환경에 "
-                "맞게 적용할 줄 아는 적응력에 가깝습니다."
-            ),
-        ),
+        learning_objectives=[
+            "물가 상승과 구매력 감소의 관계를 안다",
+            "투자가 단순 저축보다 장기 부 보호에 필요한 이유를 이해한다",
+        ],
+        keywords=["인플레이션", "물가", "화폐가치", "구매력"],
     ),
-    Tier.T5: (
-        QuizItem(
-            concept_id=501,
-            concept_name="독립적인 투자 논지",
-            question="독립적인 투자 논지를 가진 사람의 행동으로 가장 적절한 것은 무엇인가요?",
-            options=[
-                "타인의 의견을 참고하되 최종 판단 기준은 스스로 명확히 정리한다.",
-                "유명 인사의 확신이 강하면 분석 없이 그대로 따른다.",
-                "커뮤니티 분위기가 좋으면 내 논지도 자동으로 성립한다고 본다.",
-                "손실이 나면 항상 외부 변수 탓으로만 돌린다.",
-            ],
-            correct_index=0,
-            explanation=(
-                "독립적인 투자 논지는 남의 의견을 차단하는 태도가 아니라, 참고는 하되 최종 "
-                "의사결정의 책임과 기준을 스스로 세우는 상태를 뜻합니다."
-            ),
+    _cid(5): Concept(
+        id=_cid(5),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="PER (주가수익비율)",
+        tier_required=Tier.T1,
+        prerequisites=[_cid(1), _cid(3)],
+        summary=(
+            "PER = 주가 / EPS. 현재 이익이 유지된다는 가정 하에 "
+            "투자금 회수에 걸리는 햇수의 직관적 지표."
         ),
-        QuizItem(
-            concept_id=502,
-            concept_name="프레임워크 조합",
-            question="프레임워크 조합을 잘한다는 것은 무엇을 의미하나요?",
-            options=[
-                "한 번 잘 맞았던 지표 하나만 모든 투자에 반복 적용하는 것",
-                "서로 충돌하는 지표를 무조건 평균 내는 것",
-                "가치, 성장, 거시 프레임을 상황에 맞게 연결해 해석하는 것",
-                "분석 틀을 많이 쓸수록 무조건 더 정확해진다고 믿는 것",
-            ],
-            correct_index=2,
-            explanation=(
-                "프레임워크 조합은 툴을 많이 쓰는 것이 아니라, 서로 다른 관점을 같은 논지 안에서 "
-                "모순 없이 연결하는 능력입니다."
-            ),
+        learning_objectives=[
+            "PER 계산법과 직관적 의미를 안다",
+            "동종 업종 비교 외에 단일 PER의 해석 한계를 이해한다",
+        ],
+        keywords=["PER", "주가수익비율", "EPS"],
+    ),
+    _cid(6): Concept(
+        id=_cid(6),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="복리의 마법",
+        tier_required=Tier.T1,
+        prerequisites=[],
+        summary="원금에 발생한 수익이 다시 수익을 낳는 구조. 재투자와 시간이 두 핵심 변수다.",
+        learning_objectives=[
+            "단리와 복리의 차이를 안다",
+            "장기 투자가 복리 효과를 결정하는 이유를 이해한다",
+        ],
+        keywords=["복리", "재투자", "장기투자"],
+    ),
+    _cid(7): Concept(
+        id=_cid(7),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="내재가치 vs 시장가격",
+        tier_required=Tier.T1,
+        prerequisites=[_cid(1)],
+        summary=(
+            "시장은 단기적으로 비합리적일 수 있어 가격과 가치가 괴리되며, "
+            "이 괴리가 가치투자의 출발점이 된다."
         ),
-        QuizItem(
-            concept_id=503,
-            concept_name="리스크 거버넌스",
-            question="리스크 거버넌스의 핵심에 가장 가까운 것은 무엇인가요?",
-            options=[
-                "손실이 나면 그때 가서 즉흥적으로 대응한다.",
-                "손실 한도, 점검 기준, 의사결정 절차를 미리 정해 둔다.",
-                "위험한 종목만 피하면 별도의 규칙은 필요 없다고 본다.",
-                "수익률이 좋으면 리스크 규칙은 잠시 무시해도 된다고 본다.",
-            ],
-            correct_index=1,
-            explanation=(
-                "리스크 거버넌스는 감정이 아니라 절차의 문제입니다. 손실 한도와 점검 기준, "
-                "의사결정 흐름을 사전에 정의해야 예외 상황에서도 흔들리지 않습니다."
-            ),
+        learning_objectives=[
+            "가격과 가치가 다른 개념임을 안다",
+            "Mr. Market 비유로 시장의 변덕을 이해한다",
+        ],
+        keywords=["내재가치", "시장가격", "본질가치"],
+    ),
+    _cid(8): Concept(
+        id=_cid(8),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="안전마진",
+        tier_required=Tier.T1,
+        prerequisites=[_cid(5), _cid(7)],
+        summary=(
+            "주가가 내재가치보다 충분히 낮을 때 생기는 가격 완충 지대. "
+            "분석 오류와 돌발 악재에 대한 보호막."
         ),
-        QuizItem(
-            concept_id=504,
-            concept_name="시장 맥락 종합",
-            question="시장 맥락을 종합적으로 본다는 말에 가장 가까운 것은 무엇인가요?",
-            options=[
-                "뉴스 헤드라인 하나만으로 즉시 방향을 확정하는 것",
-                "기업 실적만 좋으면 금리와 유동성은 전혀 보지 않는 것",
-                "차트와 재무가 다르면 둘 중 하나는 무조건 버리는 것",
-                "기업 펀더멘털, 금리, 유동성, 심리를 함께 놓고 논지를 재점검하는 것",
-            ],
-            correct_index=3,
-            explanation=(
-                "시장 맥락 종합은 정보량을 늘리는 일이 아니라, 서로 다른 레이어의 신호를 함께 "
-                "놓고 현재 논지가 얼마나 유효한지 다시 읽는 작업입니다."
-            ),
+        learning_objectives=[
+            "안전마진이 '실수에 대한 비용'임을 이해한다",
+            "확실성 vs 가격의 관계를 설명할 수 있다",
+        ],
+        keywords=["안전마진", "margin of safety", "그레이엄"],
+    ),
+    _cid(9): Concept(
+        id=_cid(9),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="EPS·PBR·BPS",
+        tier_required=Tier.T2,
+        prerequisites=[_cid(5)],
+        summary=(
+            "EPS는 주당순이익, BPS는 주당순자산, PBR은 주가/BPS. "
+            "PBR 1 미만은 시가가 회계상 순자산 아래임을 의미."
         ),
-        QuizItem(
-            concept_id=505,
-            concept_name="자기 주도적 복기",
-            question="자기 주도적 복기를 가장 잘 설명하는 것은 무엇인가요?",
-            options=[
-                "결과가 좋든 나쁘든 의사결정 과정을 기록하고 다음 기준을 업데이트하는 것",
-                "수익이 났다면 복기 없이 같은 방식을 계속 반복하는 것",
-                "손실이 나면 기억에서 지우고 새 아이디어로 넘어가는 것",
-                "복기는 시간이 오래 걸리므로 다른 사람의 요약만 보는 것",
-            ],
-            correct_index=0,
-            explanation=(
-                "자기 주도적 복기는 결과보다 과정에서 무엇이 잘됐고 무엇이 흔들렸는지 기록해 "
-                "다음 판단 기준을 스스로 개선하는 루틴입니다."
-            ),
+        learning_objectives=[
+            "BPS·EPS·PBR을 구분해 해석한다",
+            "PBR 1 미만의 함의를 이해한다",
+        ],
+        keywords=["EPS", "PBR", "BPS", "주당순이익", "주당순자산"],
+    ),
+    _cid(10): Concept(
+        id=_cid(10),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="ROE (자기자본이익률)",
+        tier_required=Tier.T2,
+        prerequisites=[_cid(3), _cid(9)],
+        summary=(
+            "ROE = 순이익 / 자기자본. 주주가 맡긴 자본이 얼마나 효율적으로 이익을 만드는가의 지표."
         ),
+        learning_objectives=[
+            "ROE의 계산과 의미를 안다",
+            "ROE가 부채에 의해 부풀려질 수 있음을 인지한다",
+        ],
+        keywords=["ROE", "자기자본이익률"],
+    ),
+    _cid(11): Concept(
+        id=_cid(11),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="부채비율과 재무건전성",
+        tier_required=Tier.T2,
+        prerequisites=[_cid(10)],
+        summary=(
+            "부채비율 = 부채 / 자본. "
+            "과도한 레버리지는 호황엔 수익을 키우지만 불황엔 안전마진을 갉아먹는다."
+        ),
+        learning_objectives=[
+            "부채비율을 산업 특성과 함께 해석한다",
+            "재무건전성과 가치투자의 안전마진을 연결한다",
+        ],
+        keywords=["부채비율", "부채", "재무건전성", "레버리지"],
+    ),
+    _cid(12): Concept(
+        id=_cid(12),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="경제적 해자 (Economic Moat)",
+        tier_required=Tier.T2,
+        prerequisites=[_cid(7)],
+        summary=(
+            "경쟁자가 흉내내기 어려운 지속 가능한 경쟁우위. "
+            "강한 브랜드, 네트워크 효과, 전환비용 등이 대표적이다."
+        ),
+        learning_objectives=[
+            "해자의 종류 4~5가지를 안다",
+            "단기 점유율과 구조적 해자를 구분한다",
+        ],
+        keywords=["해자", "moat", "경쟁우위", "버핏"],
+    ),
+    _cid(13): Concept(
+        id=_cid(13),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="배당과 이익잉여금",
+        tier_required=Tier.T2,
+        prerequisites=[_cid(3)],
+        summary=(
+            "회사는 순이익을 배당으로 환원하거나 이익잉여금으로 사내에 쌓는다. "
+            "둘의 선택이 자본배분의 출발."
+        ),
+        learning_objectives=[
+            "배당 정책과 사내유보의 트레이드오프를 안다",
+            "재투자 ROIC가 자본비용을 넘는지가 핵심 판단 기준임을 이해한다",
+        ],
+        keywords=["배당", "이익잉여금", "사내유보", "자본"],
+    ),
+    _cid(14): Concept(
+        id=_cid(14),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="시장 사이클의 광기와 공포",
+        tier_required=Tier.T2,
+        prerequisites=[_cid(7)],
+        summary=(
+            "시장은 종종 비합리적이며 군중심리에 휩쓸린다. "
+            "가치투자는 독립적 판단을 통해 가격-가치 괴리를 활용한다."
+        ),
+        learning_objectives=[
+            "탐욕·공포가 가격을 가치에서 떨어뜨리는 메커니즘을 안다",
+            "역발상 투자(contrarian)의 의미와 위험을 구분한다",
+        ],
+        keywords=["탐욕", "공포", "사이클", "변동성", "역발상"],
+    ),
+    _cid(15): Concept(
+        id=_cid(15),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="ROIC (투하자본이익률)",
+        tier_required=Tier.T3,
+        prerequisites=[_cid(10)],
+        summary=(
+            "ROIC = NOPAT / (자기자본+차입금). "
+            "자본조달 구조에 영향을 적게 받는, 사업 자체의 자본효율 지표."
+        ),
+        learning_objectives=[
+            "ROE의 한계와 ROIC가 보정하는 지점을 안다",
+            "ROIC vs 자본비용(WACC) 비교의 의미를 이해한다",
+        ],
+        keywords=["ROIC", "투하자본수익률", "NOPAT", "자본효율"],
+    ),
+    _cid(16): Concept(
+        id=_cid(16),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="FCF (잉여현금흐름)",
+        tier_required=Tier.T3,
+        prerequisites=[_cid(3), _cid(13)],
+        summary=(
+            "FCF = 영업현금흐름 - 자본적지출. 회계이익은 조정 여지가 있지만 현금은 거짓말이 어렵다."
+        ),
+        learning_objectives=[
+            "FCF의 계산과 회계이익과의 차이를 안다",
+            "FCF의 안정성·예측가능성이 가치평가의 본질임을 이해한다",
+        ],
+        keywords=["FCF", "잉여현금흐름", "영업현금흐름", "자본적지출"],
+    ),
+    _cid(17): Concept(
+        id=_cid(17),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="자본배분 (Capital Allocation)",
+        tier_required=Tier.T3,
+        prerequisites=[_cid(15), _cid(16)],
+        summary=(
+            "경영진의 자본배분 결정(재투자·인수합병·배당·자사주매입)은 "
+            "경영진 실력의 가장 정직한 측정자다."
+        ),
+        learning_objectives=[
+            "ROIC > WACC일 때 재투자, 아닐 때 환원이 합리적임을 안다",
+            "자사주매입과 배당의 차이와 함의를 이해한다",
+        ],
+        keywords=["자본배분", "자사주매입", "재투자", "인수합병"],
+    ),
+    _cid(18): Concept(
+        id=_cid(18),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="워런 버핏의 4원칙",
+        tier_required=Tier.T3,
+        prerequisites=[_cid(12), _cid(15)],
+        summary=(
+            "1) 내가 이해할 수 있는 사업 2) 장기적으로 유리한 사업 전망 "
+            "3) 유능하고 정직한 경영진 4) 매력적인 가격."
+        ),
+        learning_objectives=[
+            "4원칙 각각을 설명할 수 있다",
+            "4원칙이 단기 차트 분석과 정반대 관점임을 안다",
+        ],
+        keywords=["버핏", "4원칙", "사업이해", "장기전망", "경영진"],
+    ),
+    _cid(19): Concept(
+        id=_cid(19),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="가치 함정 (Value Trap)",
+        tier_required=Tier.T3,
+        prerequisites=[_cid(5), _cid(12)],
+        summary=("PER이 낮아 싸 보이지만 사업의 구조적 쇠퇴 때문에 영원히 싸기만 한 주식."),
+        learning_objectives=[
+            "단순 저평가와 가치 함정을 구분한다",
+            "해자 약화와 ROIC 하락이 가치 함정의 전형적 신호임을 안다",
+        ],
+        keywords=["가치함정", "value trap", "저PER함정", "구조적쇠퇴"],
+    ),
+    _cid(20): Concept(
+        id=_cid(20),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="DCF 개념 이해",
+        tier_required=Tier.T4,
+        prerequisites=[_cid(16)],
+        summary=(
+            "기업가치 = 미래에 받을 현금흐름을 위험을 반영한 할인율로 "
+            "현재가치로 환산한 합. 수식보다 가정의 합리성이 더 중요."
+        ),
+        learning_objectives=[
+            "DCF가 모든 자산 평가의 본질적 형식화임을 안다",
+            "할인율과 성장률 가정의 민감도를 인지한다",
+        ],
+        keywords=["DCF", "현금흐름할인", "할인율", "현재가치"],
+    ),
+    _cid(21): Concept(
+        id=_cid(21),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="금리와 가치평가",
+        tier_required=Tier.T4,
+        prerequisites=[_cid(20)],
+        summary=(
+            "무위험금리는 모든 자산의 할인율 기준. "
+            "같은 미래 현금흐름이라도 금리가 오르면 현재가치는 낮아진다."
+        ),
+        learning_objectives=[
+            "금리 변동이 자산 가치 평가에 미치는 메커니즘을 안다",
+            "성장주가 금리에 더 민감한 이유를 설명할 수 있다",
+        ],
+        keywords=["금리", "할인율", "무위험금리", "가치평가"],
+    ),
+    _cid(22): Concept(
+        id=_cid(22),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="매크로 환경 변화 대응",
+        tier_required=Tier.T4,
+        prerequisites=[_cid(21), _cid(14)],
+        summary=(
+            "가치투자도 진공이 아닌 환경에서 작동한다. "
+            "예측이 아니라 '구조적 변화의 이해'에 무게를 둔다."
+        ),
+        learning_objectives=[
+            "예측과 이해를 구분한다",
+            "사업가치에 직접 영향을 미치는 매크로 변수를 식별한다",
+        ],
+        keywords=["매크로", "거시경제", "환율", "사이클"],
+    ),
+    _cid(23): Concept(
+        id=_cid(23),
+        mentor_strategy=MentorStrategy.VALUE,
+        name="가치투자의 한계와 현대적 비판",
+        tier_required=Tier.T5,
+        prerequisites=[_cid(18), _cid(19), _cid(22)],
+        summary=(
+            "무형자산이 주도하는 현대 경제에서 BPS 중심 평가의 한계, "
+            "가치·성장 이분법의 해체 등 논쟁적 주제를 다룬다."
+        ),
+        learning_objectives=[
+            "고전 가치투자의 전제와 현대 시장의 변화 지점을 비교한다",
+            "가치투자를 다른 철학과 통합적으로 사고할 수 있다",
+        ],
+        keywords=["가치투자한계", "무형자산", "그로스", "현대가치투자"],
     ),
 }
 
-_QUIZ_CATALOG: dict[int, QuizItem] = {
-    quiz.concept_id: quiz for quizzes in _QUIZZES_BY_TIER.values() for quiz in quizzes
-}
+
+def get_concept(concept_id: int) -> Concept:
+    c = _CONCEPTS.get(ConceptId(concept_id))
+    if c is None:
+        raise NotFoundError(f"개념 {concept_id}을(를) 찾을 수 없습니다")
+    return c
 
 
-def list_quizzes_for_tier(tier: Tier) -> tuple[QuizItem, ...]:
-    """현재 티어에서 풀 수 있는 개념 퀴즈 목록을 반환한다."""
-    return _QUIZZES_BY_TIER.get(tier, ())
+def list_concepts_for_strategy(strategy: MentorStrategy) -> list[Concept]:
+    return sorted(
+        (c for c in _CONCEPTS.values() if c.mentor_strategy == strategy),
+        key=lambda c: (c.tier_required.value, c.id),
+    )
 
 
-def get_quiz(concept_id: int) -> QuizItem:
-    """개념 ID에 해당하는 퀴즈를 반환한다."""
-    quiz = _QUIZ_CATALOG.get(concept_id)
-    if quiz is None:
-        raise NotFoundError("해당 개념의 퀴즈를 찾을 수 없습니다")
-    return quiz
+def _is_available(concept: Concept, user_tier: Tier, mastered: set[ConceptId]) -> bool:
+    tier_ok = concept.tier_required.value <= user_tier.value
+    prereqs_ok = all(p in mastered for p in concept.prerequisites)
+    return tier_ok and prereqs_ok
 
 
-def grade_quiz(concept_id: int, answer_index: int) -> tuple[bool, str]:
-    """퀴즈 정답을 채점하고 결과 및 해설을 반환한다."""
-    quiz = get_quiz(concept_id)
-    is_correct = quiz.correct_index == answer_index
-    return (is_correct, quiz.explanation)
+async def get_position(user_id: UserId, strategy: MentorStrategy) -> CurriculumPosition:
+    reader = growth_dep.reader()
+    tier = await reader.get_user_tier(user_id)
+    mastered = await reader.get_mastered_concepts(user_id, strategy)
+
+    all_concepts = list_concepts_for_strategy(strategy)
+    available: list[Concept] = []
+    locked: list[Concept] = []
+    for concept in all_concepts:
+        (available if _is_available(concept, tier, mastered) else locked).append(concept)
+
+    next_recommended: Concept | None = next(
+        (concept for concept in available if concept.id not in mastered),
+        None,
+    )
+    current_concept = next_recommended
+
+    return CurriculumPosition(
+        tier=tier,
+        mastered=mastered,
+        available=available,
+        locked=locked,
+        next_recommended=next_recommended,
+        current_concept=current_concept,
+    )
 
 
-__all__ = ["QuizItem", "get_quiz", "grade_quiz", "list_quizzes_for_tier"]
+__all__ = [
+    "Concept",
+    "CurriculumPosition",
+    "get_concept",
+    "get_position",
+    "list_concepts_for_strategy",
+]

@@ -3,14 +3,27 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
+import { DevLoginScreen } from '@/features/auth/screens/DevLoginScreen';
 import { LearningRecordScreen } from '@/features/growth/screens/LearningRecordScreen';
 import { getOnboardingStatus } from '@/features/onboarding/api';
 import { OnboardingScreen } from '@/features/onboarding/screens/OnboardingScreen';
 import { PromotionTestScreen } from '@/features/promotion-test/screens/PromotionTestScreen';
 import { useUserStore } from '@/store/userStore';
+import { resolveEntryScreenState } from './logic';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+function LoadingScreen() {
+  return (
+    <View style={styles.loadingContainer}>
+      <Text style={styles.loadingTitle}>기존 온보딩 상태를 확인하고 있어요.</Text>
+      <Text style={styles.loadingDescription}>
+        서버에 저장된 온보딩 정보가 있으면 바로 학습 기록 화면으로 이어집니다.
+      </Text>
+    </View>
+  );
+}
 
 export function RootNavigator() {
   const accessToken = useUserStore((state) => state.accessToken);
@@ -35,20 +48,27 @@ export function RootNavigator() {
   const isCheckingRemoteStatus =
     Boolean(accessToken) && !hasCompletedOnboarding && onboardingStatusQuery.isLoading;
 
+  const entryScreenState = resolveEntryScreenState({
+    accessToken,
+    hasCompletedOnboarding,
+    isCheckingRemoteStatus,
+  });
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {isCheckingRemoteStatus ? (
-        <Stack.Screen name="Onboarding">
-          {() => (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingTitle}>기존 온보딩 상태를 확인하고 있어요</Text>
-              <Text style={styles.loadingDescription}>
-                서버에 이미 완료된 정보가 있으면 바로 학습 기록 화면으로 이어질게요.
-              </Text>
-            </View>
-          )}
-        </Stack.Screen>
-      ) : hasCompletedOnboarding ? (
+      {entryScreenState === 'checking' ? (
+        <Stack.Screen name="Onboarding" component={LoadingScreen} />
+      ) : null}
+
+      {entryScreenState === 'login' ? (
+        <Stack.Screen name="Login" component={DevLoginScreen} />
+      ) : null}
+
+      {entryScreenState === 'onboarding' ? (
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+      ) : null}
+
+      {entryScreenState === 'home' ? (
         <>
           <Stack.Screen name="Home" component={LearningRecordScreen} />
           <Stack.Screen
@@ -63,9 +83,7 @@ export function RootNavigator() {
             }}
           />
         </>
-      ) : (
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-      )}
+      ) : null}
     </Stack.Navigator>
   );
 }

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { DevAccessTokenCard } from '@/components/DevAccessTokenCard';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { saveMentorSelection, saveOnboardingProfile } from '../api';
@@ -418,8 +417,6 @@ export function OnboardingScreen() {
                   />
                 ))}
               </View>
-
-              <DevAccessTokenCard />
             </ScrollView>
 
             <View style={styles.footerRow}>

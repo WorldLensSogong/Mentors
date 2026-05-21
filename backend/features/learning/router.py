@@ -1,24 +1,31 @@
-"""2동 — 학습 (멘토 채팅·개념퀴즈·기록).
+"""2동 - 학습 (멘토 채팅·개념퀴즈·기록).
 
 owner: learning
 관련 FR: FR-02, UC-04, UC-10
 핵심 의존성: core/ai_pipeline (RAG·Guardrail·Hallucination·Critic·TierOverlay)
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from core.ai_pipeline import guardrail
 from core.auth.dependencies import get_current_user
 from core.auth.models import User
-from core.contracts import ConceptId, ConceptMasteredEvent, MentorId, SessionId, UserId
+from core.contracts import (
+    ConceptId,
+    ConceptMasteredEvent,
+    MentorId,
+    MentorStrategy,
+    SessionId,
+    UserId,
+)
 from core.db import get_db
 from core.event_bus import event_bus
-from core.exceptions import BadRequestError
-from core.user_context import user_context
+from core.exceptions import BadRequestError, NotFoundError
 
-from . import curriculum, service
+from . import curriculum, growth_dep, quizzes, service
+from .personas import get_mentor_strategy
 from .schemas import (
     ChatStreamReq,
     CreateSessionReq,
@@ -37,7 +44,7 @@ from .schemas import (
 router = APIRouter(prefix="/api/learning", tags=["learning"])
 
 
-def _to_quiz_response(item: curriculum.QuizItem) -> QuizRes:
+def _to_quiz_response(item: quizzes.QuizView) -> QuizRes:
     return QuizRes(
         concept_id=item.concept_id,
         concept_name=item.concept_name,
@@ -112,11 +119,7 @@ async def chat_stream(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> EventSourceResponse:
-    """멘토와의 실시간 채팅 스트리밍 엔드포인트 (SSE).
-
-    - 입력 가드레일 확인 후 사용자 메시지 저장.
-    - AI 파이프라인(RAG → 티어 오버레이 → 스트리밍 → 후처리 검증)을 거쳐 응답 반환.
-    """
+    """멘토와의 실시간 채팅 스트리밍 엔드포인트 (SSE)."""
     g = guardrail.check_input(req.content)
     if not g.ok:
         raise BadRequestError(g.reason or "입력 가드레일 차단")
@@ -139,16 +142,46 @@ async def chat_stream(
     )
 
 
+@router.get("/curriculum/me", response_model=curriculum.CurriculumPosition)
+async def my_curriculum_position(
+    mentor_id: int = Query(..., description="대상 멘토 ID (1=가치, 2=성장, 3=배당, 4=모멘텀)"),
+    user: User = Depends(get_current_user),
+) -> curriculum.CurriculumPosition:
+    """사용자의 현재 커리큘럼 위치를 반환한다."""
+    strategy = get_mentor_strategy(mentor_id)
+    return await curriculum.get_position(UserId(user.id), strategy)
+
+
+@router.get("/quizzes/next", response_model=QuizRes)
+async def next_quiz(
+    mentor_id: int = Query(..., description="대상 멘토 ID (1=가치, 2=성장, 3=배당, 4=모멘텀)"),
+    user: User = Depends(get_current_user),
+) -> QuizRes:
+    """시스템이 결정한 현재 추천 퀴즈를 반환한다."""
+    strategy = get_mentor_strategy(mentor_id)
+    position = await curriculum.get_position(UserId(user.id), strategy)
+    target = position.current_concept or position.next_recommended
+    if target is None:
+        raise NotFoundError("학습 가능한 퀴즈가 더 없습니다")
+
+    item = quizzes.get_quiz(target.id)
+    return _to_quiz_response(item)
+
+
 @router.get("/me/quizzes", response_model=TierQuizCatalogRes)
 async def list_current_tier_quizzes(
     user: User = Depends(get_current_user),
 ) -> TierQuizCatalogRes:
-    """현재 티어에서 풀 수 있는 개념 퀴즈 목록."""
-    current_tier = await user_context.get_tier(UserId(user.id))
-    quizzes = curriculum.list_quizzes_for_tier(current_tier)
+    """성장 화면에서 사용하는 현재 티어 전용 퀴즈 목록."""
+    current_tier = await growth_dep.reader().get_user_tier(UserId(user.id))
+    current_tier_quizzes = [
+        quizzes.get_quiz(concept.id)
+        for concept in curriculum.list_concepts_for_strategy(MentorStrategy.VALUE)
+        if concept.tier_required == current_tier
+    ]
     return TierQuizCatalogRes(
         tier=current_tier.value,
-        quizzes=[_to_quiz_response(item) for item in quizzes],
+        quizzes=[_to_quiz_response(item) for item in current_tier_quizzes],
     )
 
 
@@ -158,7 +191,7 @@ async def get_quiz(
     user: User = Depends(get_current_user),
 ) -> QuizRes:
     """투자 개념 확인 퀴즈 조회."""
-    item = curriculum.get_quiz(concept_id)
+    item = quizzes.get_quiz(concept_id)
     return _to_quiz_response(item)
 
 
@@ -166,9 +199,23 @@ async def get_quiz(
 async def submit_quiz(
     req: SubmitQuizReq,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> SubmitQuizRes:
-    """퀴즈 정답 제출 및 채점. 정답 시 ConceptMasteredEvent 발행."""
-    is_correct, explanation = curriculum.grade_quiz(req.concept_id, req.answer_index)
+    """퀴즈 정답 제출 + 채점 + attempt 기록 + 정답 시 mastery 이벤트 발행."""
+    is_correct, explanation = quizzes.grade_quiz(
+        req.concept_id,
+        req.answer_index,
+        req.quiz_index,
+    )
+
+    await quizzes.record_attempt(
+        user_id=UserId(user.id),
+        concept_id=req.concept_id,
+        quiz_index=req.quiz_index,
+        correct=is_correct,
+        db=db,
+    )
+    await db.commit()
 
     if is_correct:
         await event_bus.publish(
