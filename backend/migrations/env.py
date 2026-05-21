@@ -29,6 +29,7 @@ from features.learning.models import (  # noqa: E402, F401
     ChatSession,
     QuizAttempt,
 )
+from features.debate.models import DebateMessage, DebateSession  # noqa: E402, F401
 from features.onboarding.models import (  # noqa: E402, F401
     OnboardingSurveyAnswer,
     UserProfile,

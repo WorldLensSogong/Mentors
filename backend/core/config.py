@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     gemini_api_key: str | None = None
+
+    naver_client_id: str | None = None
+    naver_client_secret: str | None = None
     llm_stream_timeout_s: int = 60
 
     chroma_host: str = "localhost"
