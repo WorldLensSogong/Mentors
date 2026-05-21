@@ -5,7 +5,7 @@ owner: learning
 핵심 의존성: core/ai_pipeline (RAG·Guardrail·Hallucination·Critic·TierOverlay)
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -15,9 +15,10 @@ from core.auth.models import User
 from core.contracts import ConceptId, ConceptMasteredEvent, MentorId, SessionId, UserId
 from core.db import get_db
 from core.event_bus import event_bus
-from core.exceptions import BadRequestError
+from core.exceptions import BadRequestError, NotFoundError
 
-from . import curriculum, service
+from . import curriculum, quizzes, service
+from .personas import get_mentor_strategy
 from .schemas import (
     ChatStreamReq,
     CreateSessionReq,
@@ -128,13 +129,65 @@ async def chat_stream(
     )
 
 
+@router.get("/curriculum/me", response_model=curriculum.CurriculumPosition)
+async def my_curriculum_position(
+    mentor_id: int = Query(..., description="대상 멘토 ID (1=가치, 2=성장, 3=배당, 4=모멘텀)"),
+    user: User = Depends(get_current_user),
+) -> curriculum.CurriculumPosition:
+    """사용자의 현재 커리큘럼 위치 — 멘토(투자 전략)별로 계산.
+
+    반환 필드:
+    - tier: 사용자의 현재 티어 (성장동 미등록 시 T1)
+    - mastered: 마스터한 개념 ID 집합 (성장동 미등록 시 빈셋)
+    - available: 티어 충족 + 선수 전부 마스터된 개념 목록
+    - locked: 그 외 (티어 미달 또는 선수 미충족)
+    - next_recommended: available 중 아직 마스터하지 않은 첫 개념
+    - current_concept: 현재 학습 중인 개념 (MVP: next_recommended와 동일)
+
+    MVP 시드는 가치투자(mentor_id=1)만 채워져 있다. 다른 mentor_id를
+    보내면 fallback으로 VALUE 커리큘럼이 적용되며, 시드가 없는 전략은
+    빈 Position을 반환한다.
+    """
+    strategy = get_mentor_strategy(mentor_id)
+    return await curriculum.get_position(UserId(user.id), strategy)
+
+
+@router.get("/quizzes/next", response_model=QuizRes)
+async def next_quiz(
+    mentor_id: int = Query(..., description="대상 멘토 ID (1=가치, 2=성장, 3=배당, 4=모멘텀)"),
+    user: User = Depends(get_current_user),
+) -> QuizRes:
+    """시스템이 결정한 '지금 풀 만한 퀴즈'를 반환.
+
+    선택 우선순위: `current_concept`(대화 맥락에서 감지된 개념, MVP는
+    next_recommended와 동일) → `next_recommended`(available 중 가장 앞).
+
+    모든 개념을 마스터했거나 시드가 빈 전략(GROWTH/DIVIDEND/MOMENTUM, MVP 시점)
+    이면 404를 반환한다.
+    """
+    strategy = get_mentor_strategy(mentor_id)
+    position = await curriculum.get_position(UserId(user.id), strategy)
+    target = position.current_concept or position.next_recommended
+    if target is None:
+        raise NotFoundError("학습 가능한 퀴즈가 더 없습니다")
+
+    item = quizzes.get_quiz(target.id)
+    options = [QuizOption(index=idx, text=opt_text) for idx, opt_text in enumerate(item.options)]
+    return QuizRes(
+        concept_id=item.concept_id,
+        concept_name=item.concept_name,
+        question=item.question,
+        options=options,
+    )
+
+
 @router.get("/quizzes/{concept_id}", response_model=QuizRes)
 async def get_quiz(
     concept_id: int,
     user: User = Depends(get_current_user),
 ) -> QuizRes:
     """투자 개념 확인 퀴즈 조회."""
-    item = curriculum.get_quiz(concept_id)
+    item = quizzes.get_quiz(concept_id)
     options = [QuizOption(index=idx, text=opt_text) for idx, opt_text in enumerate(item.options)]
     return QuizRes(
         concept_id=item.concept_id,
@@ -148,9 +201,25 @@ async def get_quiz(
 async def submit_quiz(
     req: SubmitQuizReq,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> SubmitQuizRes:
-    """퀴즈 정답 제출 및 채점. 정답 시 ConceptMasteredEvent 발행."""
-    is_correct, explanation = curriculum.grade_quiz(req.concept_id, req.answer_index)
+    """퀴즈 정답 제출 + 채점 + attempt DB 기록 + (정답 시) ConceptMasteredEvent 발행.
+
+    - 정답·오답 모두 `learning_quiz_attempts`에 기록 — 오답은 같은 문제 재도전 후보로,
+      정답은 follow-up 후보에서 영구 제외하는 기준이 된다.
+    - 정답 시 `ConceptMasteredEvent` 발행. 성장동이 이를 어떻게 누적·승급 판정에
+      반영할지는 성장동 책임 (학습동은 단순 발행만).
+    """
+    is_correct, explanation = quizzes.grade_quiz(req.concept_id, req.answer_index, req.quiz_index)
+
+    await quizzes.record_attempt(
+        user_id=UserId(user.id),
+        concept_id=req.concept_id,
+        quiz_index=req.quiz_index,
+        correct=is_correct,
+        db=db,
+    )
+    await db.commit()
 
     if is_correct:
         await event_bus.publish(
