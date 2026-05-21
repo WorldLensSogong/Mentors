@@ -6,7 +6,7 @@ owner: learning
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.db import Base
@@ -57,3 +57,32 @@ class ChatMessage(Base):
     )
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
+
+
+class QuizAttempt(Base):
+    """사용자별 퀴즈 시도 기록.
+
+    follow-up 정책의 중복/마스터 판정 기반:
+    - `correct=True`인 (concept_id, quiz_index)는 더 이상 follow-up 후보에서 제외
+    - 오답은 다시 같은 문제가 제공될 수 있음
+    """
+
+    __tablename__ = "learning_quiz_attempts"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    concept_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    quiz_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        # 사용자별 특정 개념 attempts 조회 최적화 (follow-up 결정 시 핫 패스)
+        Index("ix_learning_quiz_attempts_user_concept", "user_id", "concept_id"),
+    )

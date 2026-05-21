@@ -51,6 +51,10 @@ class MessageListRes(BaseModel):
 class SubmitQuizReq(BaseModel):
     concept_id: int = Field(..., description="투자 개념 ID")
     answer_index: int = Field(..., description="선택한 보기 인덱스 (0~3)")
+    quiz_index: int = Field(
+        0,
+        description="개념 내 퀴즈 인덱스 (개념당 여러 문제가 있을 때 식별). 미지정 시 0",
+    )
 
 
 class QuizOption(BaseModel):
@@ -68,3 +72,18 @@ class QuizRes(BaseModel):
 class SubmitQuizRes(BaseModel):
     correct: bool
     explanation: str
+
+
+# --- SSE follow-up 이벤트 페이로드 ---
+class FollowUpQuiz(BaseModel):
+    """`/chat/stream`의 `follow_up_quiz` SSE 이벤트로 전송되는 페이로드.
+
+    프론트가 멘토 응답 끝에 버튼을 그리기 위해 필요한 최소 필드만 노출
+    (correct_index/explanation은 제외 — submit 응답에서 제공됨).
+    """
+
+    concept_id: int
+    concept_name: str
+    quiz_index: int
+    question: str
+    options: list[str]

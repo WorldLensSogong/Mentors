@@ -8,8 +8,12 @@ from pydantic import ValidationError
 
 from core.contracts import MentorStrategy
 from core.exceptions import NotFoundError
-from features.learning.curriculum import get_quiz, grade_quiz
+from features.learning.curriculum import (
+    get_concept,
+    list_concepts_for_strategy,
+)
 from features.learning.personas import get_mentor_strategy, get_system_prompt
+from features.learning.quizzes import get_quiz, grade_quiz
 from features.learning.schemas import ChatStreamReq, SendMessageReq, SubmitQuizReq
 
 # --- curriculum ---------------------------------------------------------------
@@ -18,9 +22,11 @@ from features.learning.schemas import ChatStreamReq, SendMessageReq, SubmitQuizR
 @pytest.mark.parametrize(
     "concept_id, expected_name",
     [
-        (1, "PER (주가수익비율)"),
-        (2, "복리 (Compound Interest)"),
-        (3, "안전마진 (Margin of Safety)"),
+        (1, "주식이란 무엇인가"),
+        (5, "PER (주가수익비율)"),
+        (6, "복리의 마법"),
+        (8, "안전마진"),
+        (23, "가치투자의 한계와 현대적 비판"),
     ],
 )
 def test_get_quiz_returns_catalogued_concept(concept_id: int, expected_name: str) -> None:
@@ -37,7 +43,7 @@ def test_get_quiz_raises_not_found_for_unknown_concept() -> None:
         get_quiz(999)
 
 
-@pytest.mark.parametrize("concept_id", [1, 2, 3])
+@pytest.mark.parametrize("concept_id", [1, 5, 8, 15, 23])
 def test_grade_quiz_correct_index_returns_true(concept_id: int) -> None:
     quiz = get_quiz(concept_id)
     is_correct, explanation = grade_quiz(concept_id, quiz.correct_index)
@@ -46,9 +52,9 @@ def test_grade_quiz_correct_index_returns_true(concept_id: int) -> None:
 
 
 def test_grade_quiz_wrong_index_returns_false_with_explanation() -> None:
-    quiz = get_quiz(1)
+    quiz = get_quiz(5)  # PER
     wrong_index = (quiz.correct_index + 1) % len(quiz.options)
-    is_correct, explanation = grade_quiz(1, wrong_index)
+    is_correct, explanation = grade_quiz(5, wrong_index)
     assert is_correct is False
     assert explanation == quiz.explanation
 
@@ -56,6 +62,39 @@ def test_grade_quiz_wrong_index_returns_false_with_explanation() -> None:
 def test_grade_quiz_unknown_concept_raises() -> None:
     with pytest.raises(NotFoundError):
         grade_quiz(999, 0)
+
+
+def test_value_strategy_has_seeded_concepts() -> None:
+    # MVP 시드: VALUE만 채워져 있고 나머지 전략은 비어있다.
+    value_concepts = list_concepts_for_strategy(MentorStrategy.VALUE)
+    assert len(value_concepts) == 23
+
+    # 정렬 보장: tier_required 오름차순
+    tier_values = [c.tier_required.value for c in value_concepts]
+    assert tier_values == sorted(tier_values)
+
+
+@pytest.mark.parametrize(
+    "strategy",
+    [MentorStrategy.GROWTH, MentorStrategy.DIVIDEND, MentorStrategy.MOMENTUM],
+)
+def test_non_value_strategies_are_empty_in_mvp(strategy: MentorStrategy) -> None:
+    assert list_concepts_for_strategy(strategy) == []
+
+
+def test_prerequisite_graph_is_consistent() -> None:
+    # 모든 prereq가 (1) 같은 전략의 (2) 실존하는 개념 id를 가리켜야 한다.
+    value_concepts = list_concepts_for_strategy(MentorStrategy.VALUE)
+    value_ids = {c.id for c in value_concepts}
+    for c in value_concepts:
+        for prereq_id in c.prerequisites:
+            assert prereq_id in value_ids, (
+                f"개념 {c.id}({c.name})의 선수 {prereq_id}가 VALUE 그래프에 없음"
+            )
+            prereq = get_concept(prereq_id)
+            assert prereq.mentor_strategy == c.mentor_strategy
+            # 선수의 티어는 본인보다 같거나 낮아야 한다 (역방향 의존 금지)
+            assert prereq.tier_required.value <= c.tier_required.value
 
 
 # --- personas -----------------------------------------------------------------

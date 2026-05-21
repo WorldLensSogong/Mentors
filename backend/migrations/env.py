@@ -24,7 +24,11 @@ from features.growth.models import (  # noqa: E402, F401
     PromotionTestAttempt,
     TierState,
 )
-from features.learning.models import ChatMessage, ChatSession  # noqa: E402, F401
+from features.learning.models import (  # noqa: E402, F401
+    ChatMessage,
+    ChatSession,
+    QuizAttempt,
+)
 from features.onboarding.models import (  # noqa: E402, F401
     OnboardingSurveyAnswer,
     UserProfile,

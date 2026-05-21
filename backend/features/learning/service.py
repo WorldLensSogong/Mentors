@@ -12,15 +12,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.ai_pipeline import critic, guardrail, hallucination, rag, tier_overlay
-from core.contracts import MentorId, MessageRole, MessageSentEvent, SessionId, UserId
+from core.ai_pipeline.rag import RAGContext
+from core.contracts import (
+    MentorId,
+    MentorStrategy,
+    MessageRole,
+    MessageSentEvent,
+    SessionId,
+    UserId,
+)
 from core.db import SessionLocal
 from core.event_bus import event_bus
 from core.exceptions import NotFoundError
 from core.llm import Message, llm
 from core.user_context import user_context
 
+from . import curriculum, quizzes
+from .concept_detector import detect_concept
 from .models import ChatMessage, ChatSession
 from .personas import get_mentor_strategy, get_system_prompt
+from .schemas import FollowUpQuiz
 
 logger = logging.getLogger("learning.service")
 
@@ -122,6 +133,71 @@ async def add_message(
     return message
 
 
+def _select_active_concept(
+    user_message: str,
+    strategy: MentorStrategy,
+    position: curriculum.CurriculumPosition,
+) -> tuple[curriculum.Concept | None, bool]:
+    """현재 대화의 활성 학습 단원을 결정.
+
+    우선순위: detected(대화 키워드 매칭) → current_concept → next_recommended.
+    반환: (active, is_locked). active가 None이면 빈 전략이거나 전부 마스터한 사용자.
+    """
+    candidates = curriculum.list_concepts_for_strategy(strategy)
+    detected = detect_concept(user_message, candidates)
+    active = detected or position.current_concept or position.next_recommended
+    if active is None:
+        return (None, False)
+    locked_ids = {c.id for c in position.locked}
+    return (active, active.id in locked_ids)
+
+
+def _pick_followup_concept(
+    user_message: str,
+    mentor_answer: str,
+    strategy: MentorStrategy,
+) -> curriculum.Concept | None:
+    """follow-up 퀴즈 대상 개념 결정.
+
+    우선순위:
+    1. 사용자 메시지에서 키워드 매칭
+    2. (없으면) 멘토 응답에서 키워드 매칭
+    3. (둘 다 없으면) None — follow-up 안 보냄
+
+    `_select_active_concept`과 달리 **fallback 없음**: next_recommended로
+    떨어지지 않는다. 사용자가 "안녕"같은 무관한 메시지를 보냈고 멘토도 일반적인
+    답변만 했다면 퀴즈 버튼이 뜨지 않아야 자연스럽기 때문.
+    """
+    candidates = curriculum.list_concepts_for_strategy(strategy)
+    from_user = detect_concept(user_message, candidates)
+    if from_user is not None:
+        return from_user
+    return detect_concept(mentor_answer, candidates)
+
+
+def _build_curriculum_context(
+    active: curriculum.Concept | None,
+    is_locked: bool,
+) -> str:
+    """active 개념이 있으면 시스템 프롬프트에 붙일 컨텍스트 블록 반환. 없으면 빈 문자열."""
+    if active is None:
+        return ""
+    objectives = "\n".join(f"- {obj}" for obj in active.learning_objectives)
+    block = (
+        f"\n\n[현재 학습 단원] {active.name}\n"
+        f"[요약] {active.summary}\n"
+        f"[학습 목표]\n{objectives}\n\n"
+        "이 대화는 위 단원을 중심으로 설명해. "
+        "사용자가 충분히 이해한 것 같으면 자연스럽게 확인 퀴즈를 권유해."
+    )
+    if is_locked:
+        block += (
+            "\n\n[잠긴 단원] 사용자가 아직 풀리지 않은 개념을 물어봤다. "
+            "간략히만 설명하고, 이 개념을 익히려면 어떤 선수 개념부터 다져야 할지 안내해."
+        )
+    return block
+
+
 async def stream_assistant_response(
     session_id: SessionId,
     user_id: UserId,
@@ -144,7 +220,30 @@ async def stream_assistant_response(
         base_prompt = get_system_prompt(strategy)
         system_prompt = tier_overlay.apply(base_prompt, user_ctx.tier)
 
-        rag_ctx = await rag.retrieve(query=user_content, collection="learning_kb")
+        # 커리큘럼 컨텍스트 — 현재 학습 단원을 시스템 프롬프트에 주입
+        position = await curriculum.get_position(user_id, strategy)
+        active, is_locked = _select_active_concept(user_content, strategy, position)
+        system_prompt += _build_curriculum_context(active, is_locked)
+        if active is not None:
+            logger.info(
+                "learning.curriculum_active",
+                extra={
+                    "session_id": session_id,
+                    "active_concept_id": active.id,
+                    "is_locked": is_locked,
+                },
+            )
+
+        # RAG는 보조 컨텍스트라 실패해도 채팅 자체는 계속 진행 (learning_kb는 현 시점
+        # 비어있는 게 정상 상태이며, Chroma 일시 장애도 채팅을 막으면 안 됨).
+        try:
+            rag_ctx = await rag.retrieve(query=user_content, collection="learning_kb")
+        except Exception as rag_exc:
+            logger.warning(
+                "learning.rag_failed",
+                extra={"session_id": session_id, "reason": str(rag_exc)[:200]},
+            )
+            rag_ctx = RAGContext(documents=[], query=user_content)
         if not rag_ctx.is_empty:
             system_prompt += (
                 "\n\n[참고 지식 - 출처 표기 준수]\n"
@@ -184,6 +283,32 @@ async def stream_assistant_response(
                 "learning.output_guardrail_failed",
                 extra={"session_id": session_id, "reason": g_out.reason},
             )
+
+        # 5.5 follow-up 퀴즈 결정 — 사용자/멘토 메시지에 키워드 매칭이 있을 때만.
+        # locked 개념은 skip (멘토 본문에서 선수 안내). 사용자가 그 퀴즈를 이미
+        # 정답으로 풀었으면 skip (pick_for_user 정책).
+        followup_target = _pick_followup_concept(user_content, full_answer, strategy)
+        locked_ids = {c.id for c in position.locked}
+        if followup_target is not None and followup_target.id not in locked_ids:
+            picked = await quizzes.pick_for_user(user_id, followup_target.id, db)
+            if picked is not None:
+                quiz_item, quiz_index = picked
+                payload = FollowUpQuiz(
+                    concept_id=followup_target.id,
+                    concept_name=followup_target.name,
+                    quiz_index=quiz_index,
+                    question=quiz_item.question,
+                    options=quiz_item.options,
+                )
+                yield {"event": "follow_up_quiz", "data": payload.model_dump_json()}
+                logger.info(
+                    "learning.follow_up_quiz_sent",
+                    extra={
+                        "session_id": session_id,
+                        "concept_id": followup_target.id,
+                        "quiz_index": quiz_index,
+                    },
+                )
 
         # 6. 최종 응답 DB 저장
         assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=full_answer)
