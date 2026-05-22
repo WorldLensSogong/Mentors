@@ -104,6 +104,30 @@ async def test_start_debate_extracts_buy_question_as_neutral_topic() -> None:
     assert response.topic == "삼성전자 투자"
 
 
+async def test_start_debate_normalizes_macro_question_without_hurting_stock_topic() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="금리 인하 영향은?"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "금리 인하가 주식시장과 기업가치에 미치는 영향"
+
+
+async def test_start_debate_keeps_theme_question_suffix() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="AI 주식 거품인가"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "AI 주식 거품인가"
+
+
 async def test_start_debate_uses_local_topic_extraction_before_llm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -285,6 +309,29 @@ def test_news_evidence_summarizes_headline_style_sentence_without_description() 
     assert "폭락 대비법 네이트라는 점" not in evidence[0].as_text()
 
 
+def test_news_evidence_summarizes_macro_title_without_source_tail() -> None:
+    context = RAGContext(
+        documents=[
+            Document(
+                id="news_1",
+                text="미국 연방준비제도 금리 인하 이유와 추가 인하 전망, 한국 영향 총정리 🇺🇸💰🇰🇷 - 뉴닉.",
+                metadata={
+                    "source": "뉴닉",
+                    "title": "미국 연방준비제도 금리 인하 이유와 추가 인하 전망, 한국 영향 총정리 🇺🇸💰🇰🇷 - 뉴닉",
+                    "url": "https://example.com/news",
+                },
+            )
+        ],
+        query="금리 인하가 주식시장과 기업가치에 미치는 영향",
+    )
+
+    evidence = debate_router._extract_news_evidence(context)
+
+    assert evidence[0].sentence == "금리 인하 기대가 할인율, 성장주 밸류에이션, 환율과 수급 판단에 영향을 주고 있다"
+    assert "뉴닉라는 점" not in evidence[0].as_text()
+    assert "🇺🇸" not in evidence[0].as_prompt_line()
+
+
 def test_news_evidence_ignores_domain_tail_from_repeated_title() -> None:
     context = RAGContext(
         documents=[
@@ -394,6 +441,14 @@ def test_news_queries_use_topic_keywords_instead_of_raw_question() -> None:
     assert "삼성전자 최신 뉴스" in queries
     assert "삼성전자 오늘" in queries
     assert "삼성전자 실적 전망" in queries
+
+
+def test_macro_news_queries_are_investment_specific() -> None:
+    queries = debate_router._news_queries("금리 인하가 주식시장과 기업가치에 미치는 영향")
+
+    assert queries[0] == "금리 인하 주식시장 영향"
+    assert "금리 인하 성장주 가치주 영향" in queries
+    assert all("영향은" not in query for query in queries)
 
 
 def test_sort_recent_documents_orders_by_published_at() -> None:

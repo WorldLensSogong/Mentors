@@ -386,6 +386,11 @@ async def _search_news_documents(topic: str) -> list[Document]:
 def _news_queries(topic: str) -> list[str]:
     keywords = _topic_keywords(topic)
     base = " ".join(keywords) if keywords else topic
+    topic_type = _classify_topic(topic)
+    if topic_type == "macro":
+        macro_queries = _macro_news_queries(topic, base)
+        if macro_queries:
+            return _unique_preserve_order(macro_queries)
     return _unique_preserve_order(
         [
             base,
@@ -397,6 +402,60 @@ def _news_queries(topic: str) -> list[str]:
             f"{base} 수급 모멘텀",
         ]
     )
+
+
+def _classify_topic(topic: str) -> str:
+    compact = topic.lower()
+    if re.search(r"금리|연준|fomc|환율|물가|인플레이션|cpi|고용|유가|채권", compact):
+        return "macro"
+    if re.search(r"\bai\b|인공지능|반도체|2차전지|배터리|바이오|로봇", compact, re.IGNORECASE):
+        return "theme"
+    if re.search(r"삼성전자|하이닉스|엔비디아|애플|테슬라|현대차|네이버|카카오", topic):
+        return "stock"
+    return "general"
+
+
+def _macro_news_queries(topic: str, base: str) -> list[str]:
+    compact = topic.lower()
+    if "금리" in topic or "연준" in topic or "fomc" in compact:
+        if "인하" in topic:
+            return [
+                "금리 인하 주식시장 영향",
+                "금리 인하 성장주 가치주 영향",
+                "연준 금리 인하 전망 한국 증시",
+                "금리 인하 환율 외국인 수급",
+                "금리 인하 밸류에이션 투자 리스크",
+            ]
+        if "상승" in topic or "인상" in topic:
+            return [
+                "금리 상승 주식시장 영향",
+                "금리 상승 성장주 밸류에이션 부담",
+                "채권금리 상승 한국 증시",
+                "금리 상승 환율 외국인 수급",
+                "금리 상승 투자 리스크",
+            ]
+        return [
+            "금리 전망 주식시장 영향",
+            "연준 FOMC 한국 증시 영향",
+            "금리 변화 성장주 가치주 영향",
+            "금리 환율 외국인 수급",
+            f"{base} 투자 리스크",
+        ]
+    if "환율" in topic:
+        return [
+            "환율 변화 한국 증시 영향",
+            "원달러 환율 외국인 수급",
+            "환율 상승 수출주 내수주 영향",
+            "환율 투자 리스크",
+        ]
+    if "물가" in topic or "인플레이션" in compact or "cpi" in compact:
+        return [
+            "물가 인플레이션 주식시장 영향",
+            "CPI 금리 전망 한국 증시",
+            "인플레이션 성장주 가치주 영향",
+            "물가 투자 리스크",
+        ]
+    return []
 
 
 def _topic_keywords(topic: str, limit: int = 4) -> list[str]:
@@ -546,7 +605,7 @@ def _clean_extracted_topic(text: str) -> str:
     topic = re.sub(r"^(토론\s*)?주제\s*[:：]\s*", "", topic)
     topic = topic.strip(" \"'“”‘’`")
     topic = re.sub(r"\s+", " ", topic)
-    return topic[:80].strip()
+    return _normalize_debate_topic(topic[:80].strip())
 
 
 def _fallback_extract_debate_topic(user_input: str) -> str:
@@ -569,7 +628,31 @@ def _fallback_extract_debate_topic(user_input: str) -> str:
     topic = re.sub(r"(어떻게\s*생각해|어때|괜찮을까|좋을까|알려줘|말해줘)", " ", topic)
     topic = re.sub(r"\s+", " ", topic).strip(" ,./;:，。")
     topic = re.sub(r"\s+(은|는|이|가|을|를|에|으로|로)$", "", topic)
-    return topic[:80].strip()
+    topic = re.sub(r"(영향|전망|리스크|전략)(은|는)$", r"\1", topic)
+    return _normalize_debate_topic(topic[:80].strip())
+
+
+def _normalize_debate_topic(topic: str) -> str:
+    compact = re.sub(r"\s+", " ", topic).strip(" ,./;:，。")
+    if not compact:
+        return compact
+    if _classify_topic(compact) != "macro":
+        return compact
+    if "금리" in compact and "인하" in compact and "영향" in compact:
+        return "금리 인하가 주식시장과 기업가치에 미치는 영향"
+    if "금리" in compact and ("상승" in compact or "인상" in compact) and "영향" in compact:
+        return "금리 상승이 주식시장과 기업가치에 미치는 영향"
+    if "환율" in compact and "영향" in compact:
+        return "환율 변화가 주식시장과 기업 실적에 미치는 영향"
+    if ("물가" in compact or "인플레이션" in compact) and "영향" in compact:
+        return "물가 변화가 금리와 주식시장에 미치는 영향"
+    return compact
+
+
+def _topic_subject(topic: str) -> str:
+    if _classify_topic(topic) == "macro":
+        return topic
+    return _topic_object(topic)
 
 
 async def _generate_turn(
@@ -910,7 +993,7 @@ def _fallback_opening(
     if persona.id in {"value", "dividend"}:
         return (
             f"{news_point} 이건 불확실성이 줄었다는 점에서는 분명 긍정적입니다. "
-            f"다만 저는 {_topic_object(topic)} 단기 호재로만 보기보다, "
+            f"다만 저는 {_topic_subject(topic)} 단기 호재로만 보기보다, "
             "그 변화가 실제 현금흐름과 주주환원 여력으로 이어지는지 함께 확인하겠습니다. "
             "가격에 이미 기대가 많이 반영돼 있다면 좋은 뉴스가 나와도 안전마진은 얇아질 수 있습니다."
         )
@@ -992,10 +1075,10 @@ class NewsEvidence:
 
     def as_prompt_line(self) -> str:
         url = f" {self.url}" if self.url else ""
-        title = self.title or self.source or "뉴스"
+        title = _shorten_news_title(self.title or self.source or "뉴스")
         source = f" / 출처: {self.source}" if self.source else ""
         caution = f" / 주의: {self.caution_note()}" if self.caution_note() else ""
-        return f"제목: \"{title}\"{source} / 핵심: {self.fact_clause()}{caution}{url}"
+        return f"핵심: {self.fact_clause()}{source} / 인용 가능 제목: \"{title}\"{caution}{url}"
 
 
 def _extract_news_evidence(context: RAGContext, limit: int = 3) -> list[NewsEvidence]:
@@ -1068,9 +1151,11 @@ def _split_sentences(text: str) -> list[str]:
 def _clean_news_sentence(sentence: str, title: str) -> str:
     clean = re.sub(r"<[^>]+>", "", sentence)
     clean = re.sub(r"\s+-\s+[^-]{2,40}$", "", clean)
+    clean = re.sub(r"\s*[🇦-🇿]{2,}\s*", " ", clean)
     clean = re.sub(r"\s+", " ", clean).strip(" .!?。")
     if title and clean.startswith(title):
         clean = clean[len(title) :].lstrip(" .-–—:|")
+    clean = _strip_trailing_source_name(clean)
     return clean
 
 
@@ -1092,7 +1177,21 @@ def _summarize_news_title(title: str) -> str:
     clean = re.sub(r"^\[[^\]]+\]\s*", "", title)
     clean = re.sub(r"\s+-\s+[^-]{2,40}$", "", clean)
     clean = re.sub(r"\([^)]{2,40}\)", "", clean)
+    clean = re.sub(r"\s*[🇦-🇿]{2,}\s*", " ", clean)
+    clean = _strip_trailing_source_name(clean)
     clean = re.sub(r"\s+", " ", clean).strip(" .!?。")
+    if re.search(r"금리|연준|FOMC", clean, re.IGNORECASE):
+        if "인하" in clean:
+            return "금리 인하 기대가 할인율, 성장주 밸류에이션, 환율과 수급 판단에 영향을 주고 있다"
+        if "동결" in clean:
+            return "금리 동결과 향후 인하 시점이 시장의 밸류에이션 판단에 영향을 주고 있다"
+        if "상승" in clean or "인상" in clean:
+            return "금리 상승 부담이 성장주 밸류에이션과 위험자산 선호에 영향을 주고 있다"
+        return "금리 전망이 주식시장 밸류에이션과 수급 판단의 주요 변수로 다뤄지고 있다"
+    if re.search(r"환율|원달러|달러", clean, re.IGNORECASE):
+        return "환율 변화가 외국인 수급과 업종별 실적 기대에 영향을 주고 있다"
+    if re.search(r"물가|인플레이션|CPI", clean, re.IGNORECASE):
+        return "물가 흐름이 금리 전망과 주식시장 할인율 판단에 영향을 주고 있다"
     if re.search(r"\bAI\b|인공지능", clean, re.IGNORECASE):
         if re.search(r"거품|버블|조정|폭락|급락|대비", clean):
             return "AI 관련 주식의 가격 상승 기대와 조정 우려가 함께 부각되고 있다"
@@ -1113,8 +1212,42 @@ def _summarize_news_title(title: str) -> str:
     return f"{clean} 이슈가 투자 판단의 변수로 다뤄지고 있다" if clean else "관련 뉴스가 투자 판단의 변수로 다뤄지고 있다"
 
 
+def _strip_trailing_source_name(text: str) -> str:
+    clean = text.strip()
+    source_names = [
+        "뉴닉",
+        "토스",
+        "네이트",
+        "미디어펜",
+        "매일경제 마켓",
+        "매일경제",
+        "한국경제",
+        "연합뉴스",
+        "조선일보",
+        "중앙일보",
+        "동아일보",
+    ]
+    for source in source_names:
+        clean = re.sub(rf"\s*{re.escape(source)}$", "", clean).strip()
+    return clean
+
+
+def _shorten_news_title(title: str, max_chars: int = 42) -> str:
+    clean = re.sub(r"^\[[^\]]+\]\s*", "", title)
+    clean = re.sub(r"\s+-\s+[^-]{2,40}$", "", clean)
+    clean = re.sub(r"\([^)]{2,40}\)", "", clean)
+    clean = re.sub(r"\s*[🇦-🇿]{2,}\s*", " ", clean)
+    clean = _strip_trailing_source_name(clean)
+    clean = re.sub(r"\s+", " ", clean).strip(" .!?。")
+    if len(clean) <= max_chars:
+        return clean or "관련 뉴스"
+    return clean[:max_chars].rstrip(" ,./;:，。") + "..."
+
+
 def _to_fact_clause(sentence: str) -> str:
     clean = sentence.strip(" .!?。")
+    if clean.endswith(("이라는 점", "라는 점", "있다는 점", "없다는 점", "된다는 점", "했다는 점")):
+        return clean
     if clean.endswith("이다"):
         return f"{clean[:-2]}이라는 점"
     if clean.endswith("있다"):
