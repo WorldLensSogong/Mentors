@@ -294,7 +294,8 @@ class LLMClient:
         system, contents = self._to_google_contents(messages)
         config = types.GenerateContentConfig(
             temperature=temperature,
-            max_output_tokens=max_tokens,
+            maxOutputTokens=max_tokens,
+            thinkingConfig=types.ThinkingConfig(thinkingBudget=0),
         )
         if system is not None:
             config.system_instruction = system
@@ -329,7 +330,8 @@ class LLMClient:
         system, contents = self._to_google_contents(messages)
         config = types.GenerateContentConfig(
             temperature=temperature,
-            max_output_tokens=max_tokens,
+            maxOutputTokens=max_tokens,
+            thinkingConfig=types.ThinkingConfig(thinkingBudget=0),
         )
         if system is not None:
             config.system_instruction = system
