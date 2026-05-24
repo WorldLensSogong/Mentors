@@ -1,0 +1,41 @@
+# labeler.yml — PR이 만든 파일 경로를 보고 라벨 자동 부착.
+# Workflow: .github/workflows/labeler.yml
+# 사용 액션: actions/labeler@v5
+#
+# 목적: PR description의 "💻 영향 받는 파트" 체크박스가 자주 누락돼서
+# backend라벨인데 frontend도 만진 PR이 머지되는 사고가 반복됨 (PR #16, #18, #31).
+# 파일 경로 기반으로 라벨을 강제해서 라벨/실제 불일치를 차단.
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'backend/**'
+
+frontend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'frontend/**'
+
+dev-harness:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'frontend/src/_dev-harness/**'
+      - 'frontend/tests/_dev-harness/**'
+
+docs:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - '**/AGENTS.md'
+      - '**/SETUP.md'
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+
+database:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'backend/migrations/**'
+      - 'backend/**/models.py'

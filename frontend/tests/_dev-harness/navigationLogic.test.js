@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 
-const { resolveEntryScreenState } = require('../.tmp-navigation/logic.js');
+const { resolveEntryScreenState } = require('../../.tmp-navigation/logic.js');
 
 assert.equal(
   resolveEntryScreenState({

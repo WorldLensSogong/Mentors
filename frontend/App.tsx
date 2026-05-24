@@ -3,14 +3,14 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/queryClient';
-import { RootNavigator } from '@/navigation/RootNavigator';
+import { HarnessNavigator } from '@/_dev-harness/HarnessNavigator';
 
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <NavigationContainer>
-          <RootNavigator />
+          <HarnessNavigator />
           <StatusBar style="auto" />
         </NavigationContainer>
       </SafeAreaProvider>

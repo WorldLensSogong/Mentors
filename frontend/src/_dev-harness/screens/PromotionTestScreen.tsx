@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
-import type { RootStackParamList } from '@/navigation/types';
+import type { RootStackParamList } from '../navigation/types';
 import {
   getGrowthApiErrorMessage,
   getGrowthProgress,

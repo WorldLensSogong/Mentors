@@ -3,14 +3,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
-import { DevLoginScreen } from '@/features/auth/screens/DevLoginScreen';
-import { LearningRecordScreen } from '@/features/growth/screens/LearningRecordScreen';
 import { getOnboardingStatus } from '@/features/onboarding/api';
-import { OnboardingScreen } from '@/features/onboarding/screens/OnboardingScreen';
-import { PromotionTestScreen } from '@/features/promotion-test/screens/PromotionTestScreen';
 import { useUserStore } from '@/store/userStore';
-import { resolveEntryScreenState } from './logic';
-import type { RootStackParamList } from './types';
+import { DevLoginScreen } from './screens/DevLoginScreen';
+import { LearningRecordScreen } from './screens/LearningRecordScreen';
+import { OnboardingScreen } from './screens/OnboardingScreen';
+import { PromotionTestScreen } from './screens/PromotionTestScreen';
+import { resolveEntryScreenState } from './navigation/logic';
+import type { RootStackParamList } from './navigation/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -25,7 +25,7 @@ function LoadingScreen() {
   );
 }
 
-export function RootNavigator() {
+export function HarnessNavigator() {
   const accessToken = useUserStore((state) => state.accessToken);
   const hasCompletedOnboarding = useUserStore((state) => state.hasCompletedOnboarding);
   const finishOnboarding = useUserStore((state) => state.finishOnboarding);

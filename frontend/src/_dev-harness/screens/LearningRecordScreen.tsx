@@ -5,7 +5,19 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import { getGrowthApiErrorMessage, getGrowthProgress } from '@/features/growth/api';
-import { GrowthProgressCard } from '@/features/growth/components/GrowthProgressCard';
+import {
+  arenaRecords,
+  reportRecords,
+  type ArenaRecord,
+  type ReportUnderstanding,
+} from '@/features/growth/data';
+import {
+  didGrowthProgressAdvance,
+  getLearningRecordHintMessage,
+  getLearningRecordSegments,
+  type LearningRecordSegmentKey,
+} from '@/features/growth/logic';
+import type { GrowthProgressResponse } from '@/features/growth/types';
 import {
   getCurrentTierQuizzes,
   getLearningApiErrorMessage,
@@ -16,21 +28,9 @@ import type {
   SubmitLearningQuizRequest,
   SubmitLearningQuizResponse,
 } from '@/features/learning/types';
-import type { RootStackParamList } from '@/navigation/types';
 import { useUserStore } from '@/store/userStore';
-import {
-  arenaRecords,
-  reportRecords,
-  type ArenaRecord,
-  type ReportUnderstanding,
-} from '../data';
-import {
-  didGrowthProgressAdvance,
-  getLearningRecordHintMessage,
-  getLearningRecordSegments,
-  type LearningRecordSegmentKey,
-} from '../logic';
-import type { GrowthProgressResponse } from '../types';
+import { GrowthProgressCard } from '../components/GrowthProgressCard';
+import type { RootStackParamList } from '../navigation/types';
 
 type LearningRecordScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type QuizResultTone = 'correct' | 'incorrect' | 'review';

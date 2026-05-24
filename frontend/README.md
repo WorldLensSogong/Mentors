@@ -56,8 +56,10 @@ npm run web            # 웹 브라우저
 
 ```
 frontend/
+├── AGENTS.md                     # 분업 규칙 (작업 시작 전 read)
 ├── App.tsx                       # 엔트리 (Provider 계층)
 ├── src/
+│   ├── _dev-harness/             # 백엔드 dev들의 검증용 임시 화면. 자체 README 참조.
 │   ├── api/
 │   │   ├── client.ts             # axios 인스턴스 + JWT 인터셉터
 │   │   ├── queryClient.ts        # React Query Client
@@ -85,6 +87,8 @@ frontend/
 ├── eslint.config.js
 └── tsconfig.json
 ```
+
+> **`src/_dev-harness/`는 무엇?** 백엔드 dev들이 본인 기능을 RN으로 빠르게 검증하려고 만든 임시 화면 모음. 진짜 frontend 자리(`src/features/{빈 폴더들}/`)와 분리됨. 자세한 분업 룰은 [`AGENTS.md`](AGENTS.md), `src/_dev-harness/README.md`.
 
 ### feature 모듈 작업 시 권장 구조
 

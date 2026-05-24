@@ -1,0 +1,21 @@
+name: PR auto-labeler
+
+# PR이 만든 파일 경로 보고 라벨 자동 부착.
+# 룰: .github/labeler.yml
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          sync-labels: true
