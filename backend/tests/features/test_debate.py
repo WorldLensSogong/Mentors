@@ -87,9 +87,9 @@ async def test_start_debate_extracts_topic_from_colloquial_input() -> None:
         db,
     )
 
-    assert response.topic == "2차전지 장기 투자"
+    assert response.topic == "2차전지 장기 성장성과 투자 리스크"
     assert db.session is not None
-    assert db.session.topic == "2차전지 장기 투자"
+    assert db.session.topic == "2차전지 장기 성장성과 투자 리스크"
 
 
 async def test_start_debate_extracts_buy_question_as_neutral_topic() -> None:
@@ -102,6 +102,177 @@ async def test_start_debate_extracts_buy_question_as_neutral_topic() -> None:
     )
 
     assert response.topic == "삼성전자 투자"
+
+
+async def test_start_debate_normalizes_macro_question_without_hurting_stock_topic() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="금리 인하 영향은?"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "금리 인하가 주식시장과 기업가치에 미치는 영향"
+
+
+async def test_start_debate_normalizes_exchange_rate_buy_question() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="달러 환율 오르면 뭐 사야 돼?"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "환율 변화가 투자 판단에 미치는 영향"
+
+
+async def test_start_debate_accepts_english_company_outlook_topic() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="nvidia 전망"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "nvidia 전망"
+
+
+@pytest.mark.parametrize(
+    ("raw_topic", "expected_topic"),
+    [
+        ("CPI 높으면 성장주 어떡해?", "물가 변화가 금리와 성장주 밸류에이션에 미치는 영향"),
+        ("유가 오르면 항공주는?", "유가 변화가 항공주 수익성에 미치는 영향"),
+        ("비트코인 지금 어때", "비트코인"),
+        ("메타 지금 괜찮나", "메타 괜찮나"),
+        ("MSFT 실적 전망", "MSFT 실적 전망"),
+        ("연준이 금리 내리면 한국 증시는 어떻게 돼?", "금리 인하가 주식시장과 기업가치에 미치는 영향"),
+        ("원달러 환율이 계속 올라가면 수출주는 유리해?", "환율 변화가 투자 판단에 미치는 영향"),
+        ("애플 실적 부진해도 장기투자 괜찮아?", "애플 실적 부진해도 장기 투자"),
+    ],
+)
+async def test_start_debate_accepts_broad_investment_input_types(
+    raw_topic: str,
+    expected_topic: str,
+) -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic=raw_topic),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == expected_topic
+
+
+async def test_start_debate_normalizes_ai_bubble_question() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="AI 주식 거품인가"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "AI 주식의 밸류에이션 부담과 성장 지속성"
+
+
+async def test_start_debate_normalizes_battery_reentry_question() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="2차전지 다시 봐도 될까"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "2차전지 수요 회복과 투자 리스크"
+
+
+async def test_start_debate_normalizes_ev_slowdown_question() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="전기차 시장 끝난 건가"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "전기차 시장 둔화와 회복 가능성"
+
+
+async def test_start_debate_rejects_non_investment_topic() -> None:
+    db = FakeStartDB()
+
+    with pytest.raises(debate_router.BadRequestError) as exc:
+        await debate_router.start_debate(
+            debate_router.DebateStartRequest(topic="점심 뭐 먹지"),
+            SimpleNamespace(id=1),
+            db,
+        )
+
+    assert "투자·경제·산업" in exc.value.message
+    assert db.session is None
+
+
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "맥도날드 먹을까 버거킹 먹을까?",
+        "스타벅스 갈까 메가커피 갈까?",
+    ],
+)
+async def test_start_debate_rejects_lifestyle_brand_choice(topic: str) -> None:
+    db = FakeStartDB()
+
+    with pytest.raises(debate_router.BadRequestError) as exc:
+        await debate_router.start_debate(
+            debate_router.DebateStartRequest(topic=topic),
+            SimpleNamespace(id=1),
+            db,
+        )
+
+    assert "투자·경제·산업" in exc.value.message
+    assert db.session is None
+
+
+async def test_start_debate_allows_ambiguous_buy_word_for_user_convenience() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="맥도날드 살까 버거킹 살까?"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "맥도날드와 버거킹 투자 비교"
+
+
+async def test_start_debate_normalizes_stock_comparison_question() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="삼성전자 살까 하이닉스 살까?"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "삼성전자와 하이닉스 투자 비교"
+
+
+async def test_start_debate_allows_brand_when_investment_intent_is_explicit() -> None:
+    db = FakeStartDB()
+
+    response = await debate_router.start_debate(
+        debate_router.DebateStartRequest(topic="맥도날드 주식 투자할까"),
+        SimpleNamespace(id=1),
+        db,
+    )
+
+    assert response.topic == "맥도날드 주식 투자할까"
 
 
 async def test_start_debate_uses_local_topic_extraction_before_llm(
@@ -285,6 +456,29 @@ def test_news_evidence_summarizes_headline_style_sentence_without_description() 
     assert "폭락 대비법 네이트라는 점" not in evidence[0].as_text()
 
 
+def test_news_evidence_summarizes_macro_title_without_source_tail() -> None:
+    context = RAGContext(
+        documents=[
+            Document(
+                id="news_1",
+                text="미국 연방준비제도 금리 인하 이유와 추가 인하 전망, 한국 영향 총정리 🇺🇸💰🇰🇷 - 뉴닉.",
+                metadata={
+                    "source": "뉴닉",
+                    "title": "미국 연방준비제도 금리 인하 이유와 추가 인하 전망, 한국 영향 총정리 🇺🇸💰🇰🇷 - 뉴닉",
+                    "url": "https://example.com/news",
+                },
+            )
+        ],
+        query="금리 인하가 주식시장과 기업가치에 미치는 영향",
+    )
+
+    evidence = debate_router._extract_news_evidence(context)
+
+    assert evidence[0].sentence == "금리 인하 기대가 할인율, 성장주 밸류에이션, 환율과 수급 판단에 영향을 주고 있다"
+    assert "뉴닉라는 점" not in evidence[0].as_text()
+    assert "🇺🇸" not in evidence[0].as_prompt_line()
+
+
 def test_news_evidence_ignores_domain_tail_from_repeated_title() -> None:
     context = RAGContext(
         documents=[
@@ -394,6 +588,167 @@ def test_news_queries_use_topic_keywords_instead_of_raw_question() -> None:
     assert "삼성전자 최신 뉴스" in queries
     assert "삼성전자 오늘" in queries
     assert "삼성전자 실적 전망" in queries
+
+
+def test_news_queries_remove_investment_question_suffix() -> None:
+    queries = debate_router._news_queries("맥도날드 주식 투자할까")
+
+    assert queries[0] == "맥도날드"
+    assert all("투자할까" not in query for query in queries)
+
+
+def test_openai_owner_risk_queries_use_governance_context() -> None:
+    queries = debate_router._news_queries("openai의 오너리스크")
+
+    assert queries[0] == "OpenAI 샘 올트먼 지배구조 리스크"
+    assert "OpenAI Microsoft 투자 리스크" in queries
+
+
+def test_nvidia_outlook_queries_use_ai_semiconductor_context() -> None:
+    queries = debate_router._news_queries("nvidia 전망")
+
+    assert queries[0] == "Nvidia 실적 전망 AI 반도체 수요"
+    assert "Nvidia 주가 밸류에이션 리스크" in queries
+
+
+@pytest.mark.parametrize(
+    ("topic", "expected_first"),
+    [
+        ("MSFT 실적 전망", "마이크로소프트 실적 전망"),
+        ("구글 전망", "구글 실적 전망"),
+        ("메타 괜찮나", "메타 실적 전망"),
+        ("아마존 주가 전망", "아마존 실적 전망"),
+        ("비트코인", "비트코인 가격 전망 금리 유동성"),
+        ("유가 변화가 항공주 수익성에 미치는 영향", "유가 변화 항공주 수익성 영향"),
+        ("물가 변화가 금리와 성장주 밸류에이션에 미치는 영향", "CPI 상승 성장주 밸류에이션 부담"),
+        ("애플 실적 부진해도 장기 투자", "애플 실적 전망"),
+        ("테슬라 주가 오른 것 같은데 투자", "테슬라 실적 전망"),
+        ("구글 AI 투자 때문에 마진 안 좋아질까", "구글 실적 전망"),
+        ("AMD가 엔비디아 따라잡을 수 있을까", "AMD Nvidia AI 반도체 경쟁 구도"),
+    ],
+)
+def test_news_queries_cover_aliases_crypto_and_oil(
+    topic: str,
+    expected_first: str,
+) -> None:
+    queries = debate_router._news_queries(topic)
+
+    assert queries[0] == expected_first
+
+
+def test_macro_news_queries_are_investment_specific() -> None:
+    queries = debate_router._news_queries("금리 인하가 주식시장과 기업가치에 미치는 영향")
+
+    assert queries[0] == "금리 인하 주식시장 영향"
+    assert "금리 인하 성장주 가치주 영향" in queries
+    assert all("영향은" not in query for query in queries)
+
+
+def test_topic_keywords_strip_korean_particles_from_macro_topic() -> None:
+    keywords = debate_router._topic_keywords("금리 인하가 주식시장과 기업가치에 미치는 영향", limit=6)
+
+    assert "금리" in keywords
+    assert "인하" in keywords
+    assert "주식시장" not in keywords
+    assert "인하가" not in keywords
+    assert "기업가치에" not in keywords
+
+
+def test_theme_news_queries_focus_on_investment_context() -> None:
+    queries = debate_router._news_queries("AI 주식 거품인가")
+
+    assert queries[0] == "AI 투자 거품 밸류에이션"
+    assert "AI 반도체 수요 실적 전망" in queries
+    assert "AI 인프라 투자 수익성 리스크" in queries
+    assert all("거품인가" not in query for query in queries)
+    assert all("거품인" not in query for query in queries)
+
+
+def test_battery_theme_news_queries_cover_demand_and_profitability() -> None:
+    queries = debate_router._news_queries("2차전지 다시 봐도 될까")
+
+    assert queries[0] == "2차전지 전기차 수요 회복 전망"
+    assert "배터리 소재 가격 수익성 리스크" in queries
+    assert "전기차 판매 둔화 2차전지 실적" in queries
+    assert all("다시 될까" not in query for query in queries)
+
+
+def test_theme_news_queries_do_not_duplicate_risk_terms() -> None:
+    queries = debate_router._news_queries("2차전지 수요 회복과 투자 리스크")
+
+    assert all("투자 리스크 투자 리스크" not in query for query in queries)
+    assert "2차전지 수요 회복 리스크 핵심 쟁점" in queries
+
+
+def test_ev_theme_news_queries_do_not_collapse_into_battery_only() -> None:
+    queries = debate_router._news_queries("전기차 시장 둔화와 회복 가능성")
+
+    assert queries[0] == "전기차 판매 둔화 수요 회복 전망"
+    assert "전기차 시장 수익성 경쟁 리스크" in queries
+    assert "전기차 배터리 가격 소비자 수요" in queries
+
+
+def test_low_signal_news_filters_community_and_video_sources() -> None:
+    assert debate_router._is_low_signal_news(
+        "AI 주식 개인 투자자 현실 경험담",
+        "블로그",
+        "https://example.com/post",
+    )
+    assert debate_router._is_low_signal_news(
+        "삼성전자 투자 전망",
+        "YouTube",
+        "https://youtube.com/watch?v=abc",
+    )
+    assert debate_router._is_low_signal_news(
+        "카카오 나가고 하나은행 들어왔다…네이버·두나무 빅딜 '탄력' - jabon.co.kr",
+        "jabon.co.kr",
+        "https://news.google.com/rss/articles/example",
+    )
+    assert debate_router._is_low_signal_news(
+        "카카오 투자분석 - 주달",
+        "주달",
+        "https://news.google.com/rss/articles/example",
+    )
+    assert debate_router._is_low_signal_news(
+        "카카오뱅크의 플랫폼 독주와 AX 혁신 -> 증권·투신사 유동성 독점하는 중개 허브 - 데일리머니",
+        "데일리머니",
+        "https://news.google.com/rss/articles/example",
+    )
+
+
+def test_news_reference_uses_shortened_title_without_source_tail() -> None:
+    evidence = debate_router.NewsEvidence(
+        title="미국 연방준비제도 금리 인하 이유와 추가 인하 전망, 한국 영향 총정리 🇺🇸💰🇰🇷 | 네이버 뉴스",
+        source="네이버 뉴스",
+        url="https://example.com/news",
+        sentence="금리 인하 기대가 성장주 밸류에이션과 환율 판단에 영향을 주고 있다",
+    )
+
+    reference = debate_router._natural_news_reference(evidence)
+
+    assert "네이버 뉴스" not in reference.split("\"", maxsplit=2)[1]
+    assert "🇺🇸" not in reference
+    assert len(reference.split("\"", maxsplit=2)[1]) <= 45
+    assert "다는 점입니다" not in reference
+    assert "영향을 주는 흐름을 확인할 수 있습니다" in reference
+
+
+def test_news_reference_summarizes_kakao_title_naturally() -> None:
+    sentence = debate_router._summarize_news_title(
+        "카카오 나가고 하나은행 들어왔다…네이버·두나무 빅딜 '탄력' - jabon.co.kr"
+    )
+    evidence = debate_router.NewsEvidence(
+        title="카카오 나가고 하나은행 들어왔다…네이버·두나무 빅딜 '탄력' - jabon.co.kr",
+        source="jabon.co.kr",
+        url="https://example.com/news",
+        sentence=sentence,
+    )
+
+    reference = debate_router._natural_news_reference(evidence)
+
+    assert sentence == "카카오 관련 지분과 사업 재편 이슈가 투자 판단의 변수로 부각되고 있다"
+    assert "jabon.co.kr" not in reference.split("\"", maxsplit=2)[1]
+    assert "부각되는 흐름을 확인할 수 있습니다" in reference
 
 
 def test_sort_recent_documents_orders_by_published_at() -> None:
