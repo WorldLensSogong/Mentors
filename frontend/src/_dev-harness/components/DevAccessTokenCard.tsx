@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { getAuthApiErrorMessage, issueDevAccessToken } from '@/features/auth/api';
 import { useUserStore } from '@/store/userStore';
-import { getAccessTokenPreview, normalizeAccessTokenInput } from '@/utils/devAccessToken';
+import { getAccessTokenPreview, normalizeAccessTokenInput } from '../utils/devAccessToken';
 
 export function DevAccessTokenCard() {
   const accessToken = useUserStore((state) => state.accessToken);

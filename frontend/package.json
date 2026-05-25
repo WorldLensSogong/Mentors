@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test:navigation": "tsc src/navigation/logic.ts --module commonjs --target es2020 --lib es2020,dom --rootDir src/navigation --outDir .tmp-navigation && node tests/navigationLogic.test.js",
+    "test:navigation": "tsc src/_dev-harness/navigation/logic.ts --module commonjs --target es2020 --lib es2020,dom --rootDir src/_dev-harness/navigation --outDir .tmp-navigation && node tests/_dev-harness/navigationLogic.test.js",
     "test:onboarding": "tsc src/features/onboarding/logic.ts --module commonjs --target es2020 --lib es2020,dom --rootDir src/features/onboarding --outDir .tmp-onboarding && node tests/onboardingLogic.test.js",
     "test:growth": "tsc src/features/growth/logic.ts --module commonjs --target es2020 --lib es2020,dom --rootDir src/features/growth --outDir .tmp-growth && node tests/growthLogic.test.js",
     "typecheck": "tsc --noEmit",

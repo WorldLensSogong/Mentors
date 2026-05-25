@@ -3,16 +3,14 @@ import { useMutation } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
-import { useUserStore } from '@/store/userStore';
-import { saveMentorSelection, saveOnboardingProfile } from '../api';
+import { saveMentorSelection, saveOnboardingProfile } from '@/features/onboarding/api';
 import {
   experienceLevelOptions,
   interestOptions,
   learningGoalOptions,
   preferredStyleOptions,
   riskProfileOptions,
-} from '../data';
-import { MentorRecommendationCard } from '../components/MentorRecommendationCard';
+} from '@/features/onboarding/data';
 import {
   buildCompletedProfile,
   buildProfilePayload,
@@ -24,13 +22,15 @@ import {
   isSurveyComplete,
   ONBOARDING_STEP_COUNT,
   toggleInterest,
-} from '../logic';
+} from '@/features/onboarding/logic';
 import type {
   MentorRecommendation,
   OnboardingSurvey,
   OnboardingSyncState,
   SelectOption,
-} from '../types';
+} from '@/features/onboarding/types';
+import { useUserStore } from '@/store/userStore';
+import { MentorRecommendationCard } from '../components/MentorRecommendationCard';
 
 type AgeRange = 'teens' | 'early20s' | 'late20s' | 'thirties' | 'fortiesPlus';
 type SurveyStepKey = 'age' | 'experience' | 'risk' | 'goal' | 'style' | 'interests';

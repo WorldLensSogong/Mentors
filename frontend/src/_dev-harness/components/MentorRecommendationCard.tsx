@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
-import type { MentorRecommendation } from '../types';
+import type { MentorRecommendation } from '@/features/onboarding/types';
 
 interface MentorRecommendationCardProps {
   mentor: MentorRecommendation;
