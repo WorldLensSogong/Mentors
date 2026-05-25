@@ -28,6 +28,15 @@ export async function issueDevAccessToken(
   return response.data;
 }
 
+export async function getCurrentUser(): Promise<DevAccessTokenUser> {
+  const response = await apiClient.get<DevAccessTokenUser>('/auth/me');
+  return response.data;
+}
+
+export async function deleteCurrentUser(): Promise<void> {
+  await apiClient.delete('/auth/me');
+}
+
 export function getAuthApiErrorMessage(error: unknown, fallback: string): string {
   if (isAxiosError<{ message?: string }>(error)) {
     return error.response?.data?.message ?? fallback;

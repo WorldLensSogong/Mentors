@@ -1,5 +1,24 @@
 export type ExperienceLevel = 'beginner' | 'exploring' | 'confident';
-export type InterestTag = 'macro' | 'dividend' | 'value' | 'tech' | 'etf' | 'global';
+export type InterestTag =
+  | 'macro'
+  | 'dividend'
+  | 'value'
+  | 'tech'
+  | 'it'
+  | 'bio'
+  | 'domestic-stock'
+  | 'us-stock'
+  | 'semiconductor'
+  | 'battery'
+  | 'ai'
+  | 'defense'
+  | 'energy'
+  | 'finance'
+  | 'entertainment-media'
+  | 'fashion-consumer'
+  | 'crypto'
+  | 'etf'
+  | 'global';
 export type RiskProfile = 'steady' | 'balanced' | 'bold';
 export type LearningGoal = 'build-habit' | 'understand-news' | 'find-style';
 export type PreferredStyle = 'gentle' | 'structured' | 'challenging';
@@ -98,6 +117,13 @@ export interface OnboardingProfileResponse {
 export interface OnboardingStatusResponse {
   onboarded: boolean;
   tier?: string | null;
+  profile?: {
+    experience_level: ExperienceLevel;
+    interests: InterestTag[];
+    risk_profile: RiskProfile;
+    learning_goal: LearningGoal;
+    preferred_style: PreferredStyle;
+  } | null;
   selected_mentor?: SelectedMentorResponse | null;
   completed_at?: string | null;
 }

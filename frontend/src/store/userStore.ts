@@ -23,7 +23,13 @@ export const useUserStore = create<UserState>((set) => ({
   onboardingSource: null,
   onboardingProfile: null,
   setAccessToken: (token) => set({ accessToken: token }),
-  clearToken: () => set({ accessToken: null }),
+  clearToken: () =>
+    set({
+      accessToken: null,
+      hasCompletedOnboarding: false,
+      onboardingSource: null,
+      onboardingProfile: null,
+    }),
   finishOnboarding: ({ profile, source }) =>
     set({
       hasCompletedOnboarding: true,

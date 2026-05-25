@@ -272,6 +272,53 @@ def test_dev_token_route_reuses_existing_user_for_same_email(monkeypatch) -> Non
         app.dependency_overrides.clear()
 
 
+def test_delete_me_route_marks_user_deleted_and_blocks_future_access(monkeypatch) -> None:
+    auth_router = importlib.import_module("core.auth.router")
+    session = _FakeSession()
+    existing_user = User(
+        id=909,
+        email="delete-me@example.com",
+        nickname="delete-me",
+        status="active",
+    )
+    session.seed_user(existing_user)
+    session.seed_local_credential(user_id=909, password_hash=_hash_password("Mentors123!"))
+
+    monkeypatch.setattr(auth_router, "_sync_pk_sequence", _noop_sync_pk_sequence)
+
+    app = _build_app()
+    _override_db(app, session)
+
+    try:
+        with TestClient(app) as client:
+            login_response = client.post(
+                "/auth/local/login",
+                json={
+                    "email": existing_user.email,
+                    "password": "Mentors123!",
+                },
+            )
+            assert login_response.status_code == 200
+            token = login_response.json()["access_token"]
+
+            delete_response = client.delete(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+            assert delete_response.status_code == 204
+            assert existing_user.status == "deleted"
+
+            me_response = client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert me_response.status_code == 403
+            assert me_response.json()["message"] == "Account deleted"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_local_signup_route_creates_local_user_and_returns_valid_jwt(monkeypatch) -> None:
     auth_router = importlib.import_module("core.auth.router")
     session = _FakeSession()

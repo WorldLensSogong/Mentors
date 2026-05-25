@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
@@ -32,7 +32,6 @@ import { useUserStore } from '@/store/userStore';
 import { GrowthProgressCard } from '../components/GrowthProgressCard';
 import type { RootStackParamList } from '../navigation/types';
 
-type LearningRecordScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type QuizResultTone = 'correct' | 'incorrect' | 'review';
 
 interface QuizSubmissionState {
@@ -296,32 +295,9 @@ function InfoCard({ title, description }: { title: string; description: string }
   );
 }
 
-function BottomNavMock() {
-  return (
-    <View style={styles.bottomNav}>
-      <View style={styles.bottomNavDivider} />
-      <View style={styles.bottomNavTabs}>
-        <View style={styles.bottomNavTab}>
-          <Text style={styles.bottomNavIcon}>🔍</Text>
-          <Text style={styles.bottomNavLabel}>탐색</Text>
-        </View>
-        <View style={[styles.bottomNavTab, styles.bottomNavTabActive]}>
-          <Text style={styles.bottomNavIcon}>💬</Text>
-          <Text style={[styles.bottomNavLabel, styles.bottomNavLabelActive]}>채팅</Text>
-        </View>
-        <View style={styles.bottomNavTab}>
-          <Text style={styles.bottomNavIcon}>⚔️</Text>
-          <Text style={styles.bottomNavLabel}>투기장</Text>
-        </View>
-      </View>
-      <View style={styles.homeIndicator} />
-    </View>
-  );
-}
-
-export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) {
+export function LearningRecordScreen() {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const accessToken = useUserStore((state) => state.accessToken);
-  const resetOnboarding = useUserStore((state) => state.resetOnboarding);
   const queryClient = useQueryClient();
   const [selectedSegment, setSelectedSegment] = useState<LearningRecordSegmentKey>('reports');
   const [expandedQuizConceptId, setExpandedQuizConceptId] = useState<number | null>(null);
@@ -484,10 +460,8 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={resetOnboarding} hitSlop={10} style={styles.headerBackButton}>
-          <Text style={styles.headerBackButtonText}>←</Text>
-        </Pressable>
         <Text style={styles.headerTitle}>나의 학습 기록</Text>
+        <Text style={styles.headerSubtitle}>오늘의 리포트와 퀴즈 흐름을 한곳에서 확인해보세요.</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -614,8 +588,6 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
           ? arenaRecords.map((record) => <ArenaCard key={record.id} {...record} />)
           : null}
       </ScrollView>
-
-      <BottomNavMock />
     </SafeAreaView>
   );
 }
@@ -626,34 +598,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    alignItems: 'center',
     backgroundColor: colors.surface,
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 56,
+    gap: 6,
+    minHeight: 72,
     paddingHorizontal: 16,
-  },
-  headerBackButton: {
-    alignItems: 'center',
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
-  },
-  headerBackButtonText: {
-    color: colors.text,
-    fontSize: 24,
-    lineHeight: 24,
+    paddingVertical: 12,
   },
   headerTitle: {
     color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  headerSubtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   scrollContent: {
     gap: 12,
-    paddingBottom: 120,
+    paddingBottom: 48,
     paddingHorizontal: 16,
     paddingTop: 16,
   },
@@ -1018,61 +983,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginTop: 4,
-  },
-  bottomNav: {
-    backgroundColor: colors.surface,
-    bottom: 0,
-    height: 82,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-  },
-  bottomNavDivider: {
-    backgroundColor: colors.border,
-    height: 1,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  bottomNavTabs: {
-    flexDirection: 'row',
-    paddingHorizontal: 0,
-    paddingTop: 6,
-  },
-  bottomNavTab: {
-    alignItems: 'center',
-    flex: 1,
-    gap: 8,
-    height: 60,
-    justifyContent: 'center',
-  },
-  bottomNavTabActive: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: 18,
-    marginHorizontal: 8,
-  },
-  bottomNavIcon: {
-    fontSize: 22,
-  },
-  bottomNavLabel: {
-    color: '#AFB4B0',
-    fontSize: 11,
-  },
-  bottomNavLabelActive: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  homeIndicator: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(25, 28, 26, 0.15)',
-    borderRadius: 2,
-    height: 4,
-    marginTop: 6,
-    width: 134,
   },
 });

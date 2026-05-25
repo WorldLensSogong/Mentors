@@ -3,6 +3,12 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Home: undefined;
   PromotionTest: undefined;
+  InterestSettings: undefined;
+};
+
+export type MainTabParamList = {
+  LearningRecord: undefined;
+  Settings: undefined;
 };
 
 declare global {

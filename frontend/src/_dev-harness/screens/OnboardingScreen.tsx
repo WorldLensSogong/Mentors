@@ -1,18 +1,20 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import { saveMentorSelection, saveOnboardingProfile } from '@/features/onboarding/api';
 import {
   experienceLevelOptions,
-  interestOptions,
+  onboardingInterestOptions,
   learningGoalOptions,
   preferredStyleOptions,
   riskProfileOptions,
 } from '@/features/onboarding/data';
 import {
   buildCompletedProfile,
+  buildCompletedProfileFromStatus,
+  buildCompletedStatusFromSurvey,
   buildProfilePayload,
   buildRecommendedMentorsFromApi,
   EMPTY_ONBOARDING_SURVEY,
@@ -158,6 +160,7 @@ function getSingleSelectOptions(stepKey: SurveyStepKey): AgeOption[] | SelectOpt
 export function OnboardingScreen() {
   const accessToken = useUserStore((state) => state.accessToken);
   const finishOnboarding = useUserStore((state) => state.finishOnboarding);
+  const queryClient = useQueryClient();
   const [ageRange, setAgeRange] = useState<AgeRange | null>(null);
   const [survey, setSurvey] = useState<OnboardingSurvey>(EMPTY_ONBOARDING_SURVEY);
   const [mode, setMode] = useState<'survey' | 'mentor'>('survey');
@@ -189,13 +192,13 @@ export function OnboardingScreen() {
       mentorId: number;
     }) => {
       if (!accessToken) {
-        return { syncState: 'local' as const };
+        return { syncState: 'local' as const, status: null };
       }
 
       await saveOnboardingProfile(buildProfilePayload(currentSurvey));
-      await saveMentorSelection({ mentor_id: mentorId });
+      const status = await saveMentorSelection({ mentor_id: mentorId });
 
-      return { syncState: 'remote' as const };
+      return { syncState: 'remote' as const, status };
     },
   });
 
@@ -305,6 +308,7 @@ export function OnboardingScreen() {
     }
 
     let syncState: OnboardingSyncState = 'local';
+    let completedStatus = buildCompletedStatusFromSurvey(survey, selectedMentor.id);
 
     try {
       const result = await submitMutation.mutateAsync({
@@ -312,12 +316,18 @@ export function OnboardingScreen() {
         mentorId: selectedMentor.id,
       });
       syncState = result.syncState;
+      if (result.status) {
+        completedStatus = result.status;
+      }
     } catch {
       syncState = 'local';
     }
 
+    queryClient.setQueryData(['onboarding-status', accessToken], completedStatus);
     finishOnboarding({
-      profile: buildCompletedProfile(survey, selectedMentor.id, syncState),
+      profile:
+        buildCompletedProfileFromStatus(completedStatus) ??
+        buildCompletedProfile(survey, selectedMentor.id, syncState),
       source: syncState,
     });
   }
@@ -453,7 +463,7 @@ export function OnboardingScreen() {
 
               {currentStep.key === 'interests' ? (
                 <View style={styles.interestWrap}>
-                  {interestOptions.map((option) => (
+                  {onboardingInterestOptions.map((option) => (
                     <InterestChip
                       key={option.value}
                       label={option.label}

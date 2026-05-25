@@ -4,9 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { getOnboardingStatus } from '@/features/onboarding/api';
+import { buildCompletedProfileFromStatus } from '@/features/onboarding/logic';
 import { useUserStore } from '@/store/userStore';
 import { DevLoginScreen } from './screens/DevLoginScreen';
-import { LearningRecordScreen } from './screens/LearningRecordScreen';
+import { MainTabNavigator } from './MainTabNavigator';
+import { InterestSettingsScreen } from './screens/InterestSettingsScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
 import { PromotionTestScreen } from './screens/PromotionTestScreen';
 import { resolveEntryScreenState } from './navigation/logic';
@@ -39,7 +41,7 @@ export function HarnessNavigator() {
   useEffect(() => {
     if (onboardingStatusQuery.data?.onboarded && !hasCompletedOnboarding) {
       finishOnboarding({
-        profile: null,
+        profile: buildCompletedProfileFromStatus(onboardingStatusQuery.data),
         source: 'remote',
       });
     }
@@ -70,7 +72,7 @@ export function HarnessNavigator() {
 
       {entryScreenState === 'home' ? (
         <>
-          <Stack.Screen name="Home" component={LearningRecordScreen} />
+          <Stack.Screen name="Home" component={MainTabNavigator} />
           <Stack.Screen
             name="PromotionTest"
             component={PromotionTestScreen}
@@ -81,6 +83,11 @@ export function HarnessNavigator() {
               headerStyle: { backgroundColor: colors.background },
               headerTintColor: colors.text,
             }}
+          />
+          <Stack.Screen
+            name="InterestSettings"
+            component={InterestSettingsScreen}
+            options={{ animation: 'slide_from_right' }}
           />
         </>
       ) : null}

@@ -52,6 +52,13 @@ def test_onboarding_status_returns_service_payload(monkeypatch: pytest.MonkeyPat
         return {
             "onboarded": True,
             "tier": "T1",
+            "profile": {
+                "experience_level": "beginner",
+                "interests": ["value", "etf"],
+                "risk_profile": "steady",
+                "learning_goal": "build-habit",
+                "preferred_style": "gentle",
+            },
             "selected_mentor": {
                 "id": 1,
                 "slug": "warren-buffett",
@@ -72,6 +79,7 @@ def test_onboarding_status_returns_service_payload(monkeypatch: pytest.MonkeyPat
 
     assert response.status_code == 200
     assert response.json()["onboarded"] is True
+    assert response.json()["profile"]["interests"] == ["value", "etf"]
     assert response.json()["selected_mentor"]["slug"] == "warren-buffett"
 
 
@@ -150,3 +158,37 @@ def test_onboarding_select_mentor_route_returns_completion(monkeypatch: pytest.M
     assert response.status_code == 200
     assert response.json()["tier"] == "T1"
     assert response.json()["selected_mentor"]["name"] == "Warren Buffett"
+
+
+def test_onboarding_reset_route_requires_auth() -> None:
+    with TestClient(_build_app()) as client:
+        response = client.post("/api/onboarding/reset")
+
+    assert response.status_code == 401
+
+
+def test_onboarding_reset_route_returns_empty_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    onboarding_router = importlib.import_module("features.onboarding.router")
+
+    async def fake_reset(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "onboarded": False,
+            "tier": "T1",
+            "profile": None,
+            "selected_mentor": None,
+            "completed_at": None,
+        }
+
+    app = _build_app()
+    app.dependency_overrides[get_current_user] = _fake_user
+    monkeypatch.setattr(onboarding_router, "reset_onboarding_profile", fake_reset)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/onboarding/reset")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["onboarded"] is False
+    assert response.json()["profile"] is None

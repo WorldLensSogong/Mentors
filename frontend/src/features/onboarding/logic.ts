@@ -13,6 +13,7 @@ import type {
   MentorProfile,
   MentorRecommendation,
   OnboardingProfilePayload,
+  OnboardingStatusResponse,
   OnboardingSurvey,
   OnboardingSyncState,
 } from './types';
@@ -251,5 +252,57 @@ export function buildCompletedProfile(
     selectedMentorId: mentorId,
     completedAt: new Date().toISOString(),
     syncState,
+  };
+}
+
+export function buildCompletedStatusFromSurvey(
+  survey: OnboardingSurvey,
+  mentorId: number,
+  completedAt = new Date().toISOString(),
+): OnboardingStatusResponse {
+  if (!isSurveyComplete(survey)) {
+    throw new Error('Survey is incomplete');
+  }
+
+  const mentor = getMentorById(mentorId);
+  if (!mentor) {
+    throw new Error('Unknown mentor');
+  }
+
+  return {
+    onboarded: true,
+    tier: 'T1',
+    profile: {
+      experience_level: survey.experienceLevel,
+      interests: survey.interests,
+      risk_profile: survey.riskProfile,
+      learning_goal: survey.learningGoal,
+      preferred_style: survey.preferredStyle,
+    },
+    selected_mentor: {
+      id: mentor.id,
+      slug: mentor.slug,
+      name: mentor.name,
+    },
+    completed_at: completedAt,
+  };
+}
+
+export function buildCompletedProfileFromStatus(
+  status: OnboardingStatusResponse,
+): CompletedOnboardingProfile | null {
+  if (!status.profile || !status.selected_mentor || !status.completed_at) {
+    return null;
+  }
+
+  return {
+    experienceLevel: status.profile.experience_level,
+    interests: status.profile.interests,
+    riskProfile: status.profile.risk_profile,
+    learningGoal: status.profile.learning_goal,
+    preferredStyle: status.profile.preferred_style,
+    selectedMentorId: status.selected_mentor.id,
+    completedAt: status.completed_at,
+    syncState: 'remote',
   };
 }
