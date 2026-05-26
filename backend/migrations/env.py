@@ -19,6 +19,21 @@ from core.auth.models import AuthIdentity, LocalCredential, User  # noqa: E402, 
 from core.config import settings
 from core.db import Base
 from core.push.models import DeviceToken  # noqa: E402, F401
+
+from features.content.models import (  # noqa: E402, F401
+    ArticleKeyword,
+    Industry,
+    IndustryKeyword,
+    KnowledgeChunk,
+    MasterKeyword,
+    MasterKeywordCompany,
+    NewsArticle,
+    NewsSource,
+    PipelineRun,
+    Scrap,
+    UserKeyword,
+)
+
 from features.growth.models import (  # noqa: E402, F401
     ConceptMastery,
     PromotionTestAttempt,
