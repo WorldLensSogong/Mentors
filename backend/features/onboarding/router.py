@@ -16,6 +16,7 @@ from .schemas import (
 )
 from .service import (
     get_onboarding_status,
+    reset_onboarding_profile,
     save_onboarding_profile,
     select_onboarding_mentor,
 )
@@ -47,3 +48,11 @@ async def select_mentor(
     db: AsyncSession = Depends(get_db),
 ) -> OnboardingStatusResponse:
     return await select_onboarding_mentor(UserId(user.id), payload.mentor_id, db)
+
+
+@router.post("/reset", response_model=OnboardingStatusResponse)
+async def reset(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OnboardingStatusResponse:
+    return await reset_onboarding_profile(UserId(user.id), db)

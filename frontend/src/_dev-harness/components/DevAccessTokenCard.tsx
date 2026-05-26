@@ -18,10 +18,7 @@ export function DevAccessTokenCard() {
     setDraftToken(accessToken ?? '');
   }, [accessToken]);
 
-  const normalizedToken = useMemo(
-    () => normalizeAccessTokenInput(draftToken),
-    [draftToken],
-  );
+  const normalizedToken = useMemo(() => normalizeAccessTokenInput(draftToken), [draftToken]);
 
   if (!__DEV__) {
     return null;
@@ -61,7 +58,7 @@ export function DevAccessTokenCard() {
       setIssueError(
         getAuthApiErrorMessage(
           error,
-          '테스트 토큰을 발급하지 못했어요. 백엔드가 실행 중인지 확인해 주세요.',
+          '개발용 테스트 토큰을 발급하지 못했어요. 백엔드 서버가 실행 중인지 확인해 주세요.',
         ),
       );
     } finally {
@@ -71,10 +68,10 @@ export function DevAccessTokenCard() {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.eyebrow}>Developer Only</Text>
-      <Text style={styles.title}>테스트용 액세스 토큰</Text>
+      <Text style={styles.eyebrow}>개발 전용</Text>
+      <Text style={styles.title}>토큰 직접 입력</Text>
       <Text style={styles.description}>
-        로컬 확인 중에만 JWT를 붙여넣거나 새로 발급해서 growth API와 학습-성장 연결 흐름을 바로 확인할 수 있어요.
+        로그인 흐름 대신 JWT를 바로 붙여서 채팅, 성장, 온보딩 상태를 빠르게 점검할 수 있어요.
       </Text>
 
       <View style={styles.statusBox}>
@@ -94,7 +91,7 @@ export function DevAccessTokenCard() {
       />
 
       <Text style={styles.caption}>
-        `Bearer` 접두어를 포함해서 붙여넣어도 자동으로 정리됩니다.
+        `Bearer` 접두사가 포함된 토큰을 붙여 넣으면 자동으로 정리해서 적용합니다.
       </Text>
 
       {issueError ? <Text style={styles.errorText}>{issueError}</Text> : null}
@@ -137,7 +134,7 @@ export function DevAccessTokenCard() {
             pressed && (accessToken || draftToken) && styles.buttonPressed,
           ]}
         >
-          <Text style={styles.ghostButtonText}>토큰 제거</Text>
+          <Text style={styles.ghostButtonText}>토큰 지우기</Text>
         </Pressable>
       </View>
     </View>
@@ -158,7 +155,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1,
-    textTransform: 'uppercase',
   },
   title: {
     color: colors.text,

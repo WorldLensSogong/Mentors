@@ -44,12 +44,18 @@ from .schemas import (
 router = APIRouter(prefix="/api/learning", tags=["learning"])
 
 
-def _to_quiz_response(item: quizzes.QuizView) -> QuizRes:
+def _to_quiz_response(
+    item: quizzes.QuizView,
+    summary: quizzes.QuizAttemptSummary | None = None,
+) -> QuizRes:
     return QuizRes(
         concept_id=item.concept_id,
         concept_name=item.concept_name,
         question=item.question,
         options=[QuizOption(index=idx, text=opt_text) for idx, opt_text in enumerate(item.options)],
+        attempted=summary.attempted if summary else False,
+        solved=summary.solved if summary else False,
+        last_result_correct=summary.last_result_correct if summary else None,
     )
 
 
@@ -171,6 +177,7 @@ async def next_quiz(
 @router.get("/me/quizzes", response_model=TierQuizCatalogRes)
 async def list_current_tier_quizzes(
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> TierQuizCatalogRes:
     """성장 화면에서 사용하는 현재 티어 전용 퀴즈 목록."""
     current_tier = await growth_dep.reader().get_user_tier(UserId(user.id))
@@ -179,9 +186,17 @@ async def list_current_tier_quizzes(
         for concept in curriculum.list_concepts_for_strategy(MentorStrategy.VALUE)
         if concept.tier_required == current_tier
     ]
+    attempt_summaries = await quizzes.summarize_attempts_for_concepts(
+        user_id=UserId(user.id),
+        concept_ids=[int(item.concept_id) for item in current_tier_quizzes],
+        db=db,
+    )
     return TierQuizCatalogRes(
         tier=current_tier.value,
-        quizzes=[_to_quiz_response(item) for item in current_tier_quizzes],
+        quizzes=[
+            _to_quiz_response(item, attempt_summaries.get(int(item.concept_id)))
+            for item in current_tier_quizzes
+        ],
     )
 
 

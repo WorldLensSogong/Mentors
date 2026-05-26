@@ -1,5 +1,11 @@
 import { isAxiosError } from 'axios';
 import { apiClient } from '@/api/client';
+import {
+  DEV_LOCAL_TEST_ACCOUNT_EMAIL,
+  DEV_LOCAL_TEST_ACCOUNT_PASSWORD,
+  type LocalLoginRequest,
+  type LocalSignupRequest,
+} from './contracts';
 
 export interface DevAccessTokenRequest {
   email?: string;
@@ -13,12 +19,28 @@ export interface DevAccessTokenUser {
   status: string;
 }
 
-export interface DevAccessTokenResponse {
+export interface AuthTokenResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
+}
+
+export interface DevAccessTokenResponse extends AuthTokenResponse {
   created: boolean;
   user: DevAccessTokenUser;
+}
+
+export { DEV_LOCAL_TEST_ACCOUNT_EMAIL, DEV_LOCAL_TEST_ACCOUNT_PASSWORD };
+export type { LocalLoginRequest, LocalSignupRequest };
+
+export async function localSignup(payload: LocalSignupRequest): Promise<AuthTokenResponse> {
+  const response = await apiClient.post<AuthTokenResponse>('/auth/local/signup', payload);
+  return response.data;
+}
+
+export async function localLogin(payload: LocalLoginRequest): Promise<AuthTokenResponse> {
+  const response = await apiClient.post<AuthTokenResponse>('/auth/local/login', payload);
+  return response.data;
 }
 
 export async function issueDevAccessToken(
@@ -26,6 +48,15 @@ export async function issueDevAccessToken(
 ): Promise<DevAccessTokenResponse> {
   const response = await apiClient.post<DevAccessTokenResponse>('/auth/dev-token', payload);
   return response.data;
+}
+
+export async function getCurrentUser(): Promise<DevAccessTokenUser> {
+  const response = await apiClient.get<DevAccessTokenUser>('/auth/me');
+  return response.data;
+}
+
+export async function deleteCurrentUser(): Promise<void> {
+  await apiClient.delete('/auth/me');
 }
 
 export function getAuthApiErrorMessage(error: unknown, fallback: string): string {

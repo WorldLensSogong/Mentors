@@ -67,6 +67,7 @@ class OnboardingProfileResponse(BaseModel):
 class OnboardingStatusResponse(BaseModel):
     onboarded: bool
     tier: Tier | None = None
+    profile: OnboardingProfileSummary | None = None
     selected_mentor: SelectedMentorResponse | None = None
     completed_at: datetime | None = None
 

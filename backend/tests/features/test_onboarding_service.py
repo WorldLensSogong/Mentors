@@ -21,7 +21,7 @@ def test_recommend_mentors_prefers_buffett_for_steady_value_profile() -> None:
     recommendations = recommend_mentors(profile)
 
     assert recommendations[0].slug == "warren-buffett"
-    assert recommendations[0].name == "Warren Buffett"
+    assert recommendations[0].name == "워런 버핏"
     assert recommendations[0].reason
 
 
@@ -37,7 +37,7 @@ def test_recommend_mentors_prefers_dalio_for_macro_balanced_profile() -> None:
     recommendations = recommend_mentors(profile)
 
     assert recommendations[0].slug == "ray-dalio"
-    assert recommendations[0].name == "Ray Dalio"
+    assert recommendations[0].name == "레이 달리오"
 
 
 def test_get_mentor_by_id_returns_none_for_unknown_id() -> None:

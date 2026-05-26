@@ -6,7 +6,7 @@ import type {
   PreferredStyle,
   RiskProfile,
   SelectOption,
-} from './types';
+} from '../../features/onboarding/types';
 
 export const experienceLevelOptions: SelectOption<ExperienceLevel>[] = [
   {
@@ -44,20 +44,110 @@ export const interestOptions: SelectOption<InterestTag>[] = [
   },
   {
     value: 'tech',
-    label: '기술 성장주',
-    description: '빠르게 성장하는 산업과 기업을 추적하고 싶어요.',
+    label: '반도체·AI',
+    description: '반도체, AI 인프라, 첨단 기술 흐름을 따라가며 핵심 종목을 보고 싶어요.',
+  },
+  {
+    value: 'it',
+    label: 'IT·테크',
+    description: '소프트웨어, 플랫폼, 인터넷 서비스 기업을 중심으로 배우고 싶어요.',
+  },
+  {
+    value: 'bio',
+    label: '바이오',
+    description: '제약, 바이오, 의료기기처럼 성장성과 이슈가 큰 분야를 이해하고 싶어요.',
   },
   {
     value: 'etf',
-    label: 'ETF·분산',
+    label: 'ETF·펀드',
     description: '개별 종목보다 포트폴리오 전체를 안정적으로 보고 싶어요.',
   },
   {
     value: 'global',
-    label: '해외 시장',
+    label: '해외 주식',
     description: '미국과 글로벌 시장까지 시야를 넓히고 싶어요.',
   },
 ];
+
+export const profileInterestOptions: SelectOption<InterestTag>[] = [
+  {
+    value: 'domestic-stock',
+    label: '국내 주식',
+    description: '국내 대표 기업과 산업 흐름을 중심으로 배우고 싶어요.',
+  },
+  {
+    value: 'us-stock',
+    label: '미국 주식',
+    description: '미국 빅테크와 대표 지수 중심으로 시장을 이해하고 싶어요.',
+  },
+  {
+    value: 'global',
+    label: '해외 주식',
+    description: '미국 외 글로벌 종목과 지역별 시장 흐름도 함께 보고 싶어요.',
+  },
+  {
+    value: 'bio',
+    label: '바이오',
+    description: '제약, 바이오, 헬스케어 산업의 성장성과 이슈를 따라가고 싶어요.',
+  },
+  {
+    value: 'it',
+    label: 'IT·테크',
+    description: '플랫폼, 소프트웨어, 인터넷 서비스 기업을 중심으로 배우고 싶어요.',
+  },
+  {
+    value: 'semiconductor',
+    label: '반도체',
+    description: '반도체 업황과 핵심 부품·장비 기업을 이해하고 싶어요.',
+  },
+  {
+    value: 'battery',
+    label: '2차전지',
+    description: '배터리 소재, 셀, 장비 산업의 흐름을 보고 싶어요.',
+  },
+  {
+    value: 'ai',
+    label: 'AI',
+    description: 'AI 서비스와 인프라 시장이 어떤 산업을 움직이는지 궁금해요.',
+  },
+  {
+    value: 'defense',
+    label: '방산',
+    description: '지정학 이슈와 연결되는 방위산업 흐름을 알고 싶어요.',
+  },
+  {
+    value: 'energy',
+    label: '에너지',
+    description: '원유, 전력, 친환경 에너지 섹터를 중심으로 이해하고 싶어요.',
+  },
+  {
+    value: 'finance',
+    label: '금융',
+    description: '은행, 보험, 증권 업종이 금리와 함께 어떻게 움직이는지 보고 싶어요.',
+  },
+  {
+    value: 'entertainment-media',
+    label: '엔터·미디어',
+    description: '콘텐츠, 플랫폼, 팬덤 비즈니스가 주가와 연결되는 방식을 보고 싶어요.',
+  },
+  {
+    value: 'fashion-consumer',
+    label: '패션·소비재',
+    description: '브랜드, 유통, 소비 트렌드 중심으로 기업을 이해하고 싶어요.',
+  },
+  {
+    value: 'etf',
+    label: 'ETF·펀드',
+    description: '개별 종목보다 포트폴리오 전체를 안정적으로 보고 싶어요.',
+  },
+  {
+    value: 'crypto',
+    label: '암호화폐',
+    description: '코인 시장과 관련 주식, 정책 이슈를 함께 이해하고 싶어요.',
+  },
+];
+
+export const onboardingInterestOptions = profileInterestOptions;
 
 export const riskProfileOptions: SelectOption<RiskProfile>[] = [
   {
@@ -117,14 +207,14 @@ export const mentorCatalog: MentorProfile[] = [
   {
     id: 1,
     slug: 'warren-buffett',
-    name: 'Warren Buffett',
+    name: '워런 버핏',
     title: '가치 투자 멘토',
     oneLiner: '장기 복리와 기업 가치의 기본을 차분히 잡아주는 가치투자 멘토',
     philosophy:
       '좋은 기업을 제대로 이해하고 오래 보유하는 태도가 결국 복리의 차이를 만든다고 봅니다.',
     idealFor: '안정적인 투자 기초를 쌓고 장기 관점의 판단 기준을 만들고 싶은 사용자',
     accentColor: '#2D6A4F',
-    focusTags: ['dividend', 'value', 'etf', 'macro'],
+    focusTags: ['dividend', 'value', 'etf', 'macro', 'domestic-stock', 'us-stock', 'finance'],
     experienceMatch: ['beginner', 'exploring'],
     riskMatch: ['steady', 'balanced'],
     styleMatch: ['gentle', 'structured'],
@@ -134,13 +224,27 @@ export const mentorCatalog: MentorProfile[] = [
   {
     id: 2,
     slug: 'peter-lynch',
-    name: 'Peter Lynch',
+    name: '피터 린치',
     title: '생활형 종목 발굴 멘토',
     oneLiner: '생활 속 단서와 쉬운 설명으로 종목 판단 감각을 키워주는 멘토',
     philosophy: '생활 속에서 이해한 기업을 꾸준히 관찰하면 좋은 아이디어는 가까이에 있다고 봅니다.',
     idealFor: '뉴스와 기업 사례를 연결해서 개별 종목 감각을 키우고 싶은 사용자',
     accentColor: '#C66B5A',
-    focusTags: ['value', 'tech', 'global', 'dividend'],
+    focusTags: [
+      'value',
+      'tech',
+      'it',
+      'bio',
+      'global',
+      'dividend',
+      'domestic-stock',
+      'us-stock',
+      'semiconductor',
+      'battery',
+      'ai',
+      'entertainment-media',
+      'fashion-consumer',
+    ],
     experienceMatch: ['beginner', 'exploring', 'confident'],
     riskMatch: ['balanced', 'bold'],
     styleMatch: ['gentle', 'challenging'],
@@ -150,13 +254,13 @@ export const mentorCatalog: MentorProfile[] = [
   {
     id: 3,
     slug: 'ray-dalio',
-    name: 'Ray Dalio',
+    name: '레이 달리오',
     title: '거시 흐름과 포트폴리오 멘토',
     oneLiner: '거시 흐름과 분산 관점을 구조적으로 설명해 주는 포트폴리오 멘토',
     philosophy: '개별 종목보다 먼저 큰 흐름과 자산 배분을 이해하면 흔들림이 줄어든다고 봅니다.',
     idealFor: '뉴스 해석과 분산 투자 기준을 함께 세우고 싶은 사용자',
     accentColor: '#355CDE',
-    focusTags: ['macro', 'etf', 'global', 'value'],
+    focusTags: ['macro', 'etf', 'global', 'value', 'tech', 'it', 'energy', 'finance', 'us-stock'],
     experienceMatch: ['exploring', 'confident'],
     riskMatch: ['steady', 'balanced', 'bold'],
     styleMatch: ['structured', 'challenging'],
@@ -177,7 +281,9 @@ export function getExperienceLevelLabel(value: ExperienceLevel | null | undefine
 }
 
 export function getInterestLabel(value: InterestTag): string {
-  return getOptionLabel(interestOptions, value);
+  return (
+    getOptionLabel(profileInterestOptions, value) || getOptionLabel(interestOptions, value)
+  );
 }
 
 export function getRiskProfileLabel(value: RiskProfile | null | undefined): string {

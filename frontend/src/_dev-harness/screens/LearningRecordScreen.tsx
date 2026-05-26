@@ -1,22 +1,10 @@
 import { useState } from 'react';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import { getGrowthApiErrorMessage, getGrowthProgress } from '@/features/growth/api';
-import {
-  arenaRecords,
-  reportRecords,
-  type ArenaRecord,
-  type ReportUnderstanding,
-} from '@/features/growth/data';
-import {
-  didGrowthProgressAdvance,
-  getLearningRecordHintMessage,
-  getLearningRecordSegments,
-  type LearningRecordSegmentKey,
-} from '@/features/growth/logic';
 import type { GrowthProgressResponse } from '@/features/growth/types';
 import {
   getCurrentTierQuizzes,
@@ -30,9 +18,21 @@ import type {
 } from '@/features/learning/types';
 import { useUserStore } from '@/store/userStore';
 import { GrowthProgressCard } from '../components/GrowthProgressCard';
+import {
+  arenaRecords,
+  reportRecords,
+  type ArenaRecord,
+  type ReportUnderstanding,
+} from '../growth/data';
+import {
+  buildGrowthProgressQueryKey,
+  didGrowthProgressAdvance,
+  getLearningRecordHintMessage,
+  getLearningRecordSegments,
+  type LearningRecordSegmentKey,
+} from '../growth/logic';
 import type { RootStackParamList } from '../navigation/types';
 
-type LearningRecordScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type QuizResultTone = 'correct' | 'incorrect' | 'review';
 
 interface QuizSubmissionState {
@@ -49,25 +49,37 @@ function wait(ms: number): Promise<void> {
 }
 
 function getQuizResultState(
+  quiz: LearningQuiz,
   submissionState: QuizSubmissionState | undefined,
 ): { label: string; tone: QuizResultTone } {
-  if (!submissionState) {
-    return { label: '풀어보기', tone: 'review' };
+  if (submissionState) {
+    if (!submissionState.correct) {
+      return { label: '다시 도전', tone: 'incorrect' };
+    }
+
+    if (submissionState.syncState === 'syncing') {
+      return { label: '정답 · 반영 중', tone: 'review' };
+    }
+
+    if (submissionState.syncState === 'delayed') {
+      return { label: '정답 · 확인 필요', tone: 'review' };
+    }
+
+    return { label: '정답 완료', tone: 'correct' };
   }
 
-  if (!submissionState.correct) {
-    return { label: '다시 도전', tone: 'incorrect' };
+  if (quiz.solved) {
+    return { label: '정답 완료', tone: 'correct' };
   }
 
-  if (submissionState.syncState === 'syncing') {
-    return { label: '정답 · 반영 중', tone: 'review' };
+  if (quiz.attempted) {
+    return {
+      label: quiz.last_result_correct === false ? '다시 도전' : '풀이 기록',
+      tone: quiz.last_result_correct === false ? 'incorrect' : 'review',
+    };
   }
 
-  if (submissionState.syncState === 'delayed') {
-    return { label: '정답 · 확인 필요', tone: 'review' };
-  }
-
-  return { label: '정답', tone: 'correct' };
+  return { label: '미응시', tone: 'review' };
 }
 
 function ReportCard({
@@ -90,9 +102,9 @@ function ReportCard({
     label: string;
     icon: string;
   }[] = [
-    { value: 'known', label: '알고 있어요', icon: '✓' },
-    { value: 'heard', label: '들어봤어요', icon: '💭' },
-    { value: 'unknown', label: '모르겠어요', icon: '?' },
+    { value: 'known', label: '잘 알고 있어요', icon: '●' },
+    { value: 'heard', label: '들어봤어요', icon: '◐' },
+    { value: 'unknown', label: '처음 봐요', icon: '○' },
   ];
 
   return (
@@ -171,13 +183,13 @@ function QuizCard({
   onSelectAnswer: (answerIndex: number) => void;
   onSubmit: () => void;
 }) {
-  const resultState = getQuizResultState(submissionState);
+  const resultState = getQuizResultState(quiz, submissionState);
 
   return (
     <View style={[styles.card, styles.quizCard, expanded && styles.quizCardExpanded]}>
       <Pressable onPress={onToggle} style={styles.quizCardToggle}>
         <View style={styles.quizIndicator}>
-          <Text style={styles.quizIndicatorText}>🧠</Text>
+          <Text style={styles.quizIndicatorText}>Q</Text>
         </View>
         <View style={styles.quizBody}>
           <Text style={styles.quizMeta}>{tierLabel}</Text>
@@ -185,7 +197,7 @@ function QuizCard({
           <Text style={styles.quizQuestion}>{quiz.question}</Text>
           <QuizResultChip label={resultState.label} tone={resultState.tone} />
         </View>
-        <Text style={styles.quizArrow}>{expanded ? '⌄' : '›'}</Text>
+        <Text style={styles.quizArrow}>{expanded ? '⌃' : '⌄'}</Text>
       </Pressable>
 
       {expanded ? (
@@ -276,13 +288,13 @@ function ArenaCard({
     <Pressable style={[styles.card, styles.arenaCard]}>
       <View style={styles.arenaAvatarRow}>
         <ArenaAvatar letter={mentorALetter} label={mentorALabel} />
-        <Text style={styles.arenaVs}>VS</Text>
+        <Text style={styles.arenaVs}>대결</Text>
         <ArenaAvatar letter={mentorBLetter} label={mentorBLabel} />
       </View>
       <Text style={styles.cardDate}>{date}</Text>
       <Text style={styles.arenaTopicLabel}>{topicLabel}</Text>
       <Text style={styles.arenaTopic}>{topic}</Text>
-      <Text style={styles.quizArrow}>›</Text>
+      <Text style={styles.quizArrow}>↗</Text>
     </Pressable>
   );
 }
@@ -296,32 +308,9 @@ function InfoCard({ title, description }: { title: string; description: string }
   );
 }
 
-function BottomNavMock() {
-  return (
-    <View style={styles.bottomNav}>
-      <View style={styles.bottomNavDivider} />
-      <View style={styles.bottomNavTabs}>
-        <View style={styles.bottomNavTab}>
-          <Text style={styles.bottomNavIcon}>🔍</Text>
-          <Text style={styles.bottomNavLabel}>탐색</Text>
-        </View>
-        <View style={[styles.bottomNavTab, styles.bottomNavTabActive]}>
-          <Text style={styles.bottomNavIcon}>💬</Text>
-          <Text style={[styles.bottomNavLabel, styles.bottomNavLabelActive]}>채팅</Text>
-        </View>
-        <View style={styles.bottomNavTab}>
-          <Text style={styles.bottomNavIcon}>⚔️</Text>
-          <Text style={styles.bottomNavLabel}>투기장</Text>
-        </View>
-      </View>
-      <View style={styles.homeIndicator} />
-    </View>
-  );
-}
-
-export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) {
+export function LearningRecordScreen() {
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const accessToken = useUserStore((state) => state.accessToken);
-  const resetOnboarding = useUserStore((state) => state.resetOnboarding);
   const queryClient = useQueryClient();
   const [selectedSegment, setSelectedSegment] = useState<LearningRecordSegmentKey>('reports');
   const [expandedQuizConceptId, setExpandedQuizConceptId] = useState<number | null>(null);
@@ -341,7 +330,8 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
       ) as Record<string, ReportUnderstanding>,
   );
 
-  const growthQueryKey = ['growth-progress', accessToken] as const;
+  const growthQueryKey = buildGrowthProgressQueryKey(accessToken);
+  const learningQuizzesQueryKey = ['learning-quizzes', accessToken] as const;
   const growthProgressQuery = useQuery({
     queryKey: growthQueryKey,
     queryFn: getGrowthProgress,
@@ -350,7 +340,7 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
   });
 
   const learningQuizzesQuery = useQuery({
-    queryKey: ['learning-quizzes', accessToken],
+    queryKey: learningQuizzesQueryKey,
     queryFn: getCurrentTierQuizzes,
     enabled: Boolean(accessToken),
     retry: 0,
@@ -379,7 +369,7 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
         explanation: result.explanation,
         syncState: result.correct ? 'syncing' : 'idle',
         message: result.correct
-          ? '정답이에요. 성장 게이지 반영을 확인하고 있어요.'
+          ? '정답이에요. 이해도와 퀴즈 상태를 반영하고 있어요.'
           : '오답이에요. 해설을 확인하고 다시 도전해 보세요.',
       };
 
@@ -388,6 +378,18 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
         [variables.concept_id]: initialState,
       }));
 
+      if (accessToken) {
+        try {
+          await queryClient.invalidateQueries({ queryKey: learningQuizzesQueryKey });
+          await queryClient.fetchQuery({
+            queryKey: learningQuizzesQueryKey,
+            queryFn: getCurrentTierQuizzes,
+          });
+        } catch {
+          // Ignore quiz list refresh failures and keep the local submission state.
+        }
+      }
+
       if (!result.correct) {
         return;
       }
@@ -395,7 +397,8 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
       let nextState: QuizSubmissionState = {
         ...initialState,
         syncState: 'delayed',
-        message: '정답은 저장됐어요. 성장 게이지 반영은 서버 동기화에 따라 잠시 늦을 수 있어요.',
+        message:
+          '정답은 저장됐어요. 성장 게이지 반영은 서버 응답 시점에 따라 조금 늦을 수 있어요.',
       };
 
       try {
@@ -406,7 +409,7 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
           nextState = {
             ...initialState,
             syncState: 'synced',
-            message: '정답을 저장하고 성장 카드를 새로고침했어요.',
+            message: '정답이 반영돼 성장 카드도 새로고침했어요.',
           };
         } else {
           for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -419,7 +422,7 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
               nextState = {
                 ...initialState,
                 syncState: 'synced',
-                message: '정답이 반영되어 성장 게이지를 갱신했어요.',
+                message: '정답이 반영돼 이해도 게이지가 갱신됐어요.',
               };
               break;
             }
@@ -470,7 +473,7 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
     if (answerIndex == null) {
       setQuizErrorByConceptId((current) => ({
         ...current,
-        [conceptId]: '보기를 하나 선택한 뒤 제출해 주세요.',
+        [conceptId]: '보기 하나를 고른 뒤 제출해 주세요.',
       }));
       return;
     }
@@ -484,10 +487,23 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={resetOnboarding} hitSlop={10} style={styles.headerBackButton}>
-          <Text style={styles.headerBackButtonText}>←</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>나의 학습 기록</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerTextGroup}>
+            <Text style={styles.headerTitle}>나의 학습 기록</Text>
+            <Text style={styles.headerSubtitle}>
+              리포트, 퀴즈, 토론 기록을 한 번에 확인할 수 있어요.
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => navigation.navigate('Settings')}
+            style={({ pressed }) => [
+              styles.headerActionButton,
+              pressed && styles.headerActionButtonPressed,
+            ]}
+          >
+            <Text style={styles.headerActionButtonText}>설정</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -519,7 +535,7 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
         </View>
 
         <View style={styles.hintBanner}>
-          <Text style={styles.hintIcon}>💡</Text>
+          <Text style={styles.hintIcon}>ⓘ</Text>
           <Text style={styles.hintText}>{getLearningRecordHintMessage(selectedSegment)}</Text>
         </View>
 
@@ -544,23 +560,23 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
 
         {selectedSegment === 'quizzes' && !accessToken ? (
           <InfoCard
-            title="로그인하면 학습과 성장이 함께 기록돼요"
-            description="현재 티어 퀴즈를 풀면 정답 시 성장 게이지가 함께 올라가요. 서버 계정으로 들어오면 이 연결 흐름을 바로 확인할 수 있어요."
+            title="로그인하면 학습 결과를 서버에 연결할 수 있어요"
+            description="현재 티어 퀴즈를 풀면 정답 여부와 이해도 게이지가 계정과 함께 저장돼요."
           />
         ) : null}
 
         {selectedSegment === 'quizzes' && accessToken && learningQuizzesQuery.isLoading ? (
           <InfoCard
             title="현재 티어 퀴즈를 불러오는 중이에요"
-            description="성장 단계와 맞는 학습 문항을 연결하고 있어요."
+            description="지금 단계에 맞는 학습 문항을 정리하고 있어요."
           />
         ) : null}
 
-        {selectedSegment === 'quizzes' && accessToken && !learningQuizzesQuery.isLoading && learningErrorMessage ? (
-          <InfoCard
-            title="학습 퀴즈를 가져오지 못했어요"
-            description={learningErrorMessage}
-          />
+        {selectedSegment === 'quizzes' &&
+        accessToken &&
+        !learningQuizzesQuery.isLoading &&
+        learningErrorMessage ? (
+          <InfoCard title="학습 퀴즈를 불러오지 못했어요" description={learningErrorMessage} />
         ) : null}
 
         {selectedSegment === 'quizzes' &&
@@ -569,15 +585,16 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
         !learningErrorMessage &&
         learningQuizzesQuery.data?.quizzes.length === 0 ? (
           <InfoCard
-            title="아직 연결된 퀴즈가 없어요"
-            description="현재 티어에서 풀 수 있는 학습 퀴즈가 준비되면 여기에서 바로 이어서 볼 수 있어요."
+            title="아직 열린 퀴즈가 없어요"
+            description="현재 티어에서 풀 수 있는 퀴즈가 준비되면 여기에서 바로 이어서 볼 수 있어요."
           />
         ) : null}
 
         {selectedSegment === 'quizzes' && learningQuizzesQuery.data
           ? learningQuizzesQuery.data.quizzes.map((quiz) => {
               const isSubmitting =
-                submitQuizMutation.isPending && submitQuizMutation.variables?.concept_id === quiz.concept_id;
+                submitQuizMutation.isPending &&
+                submitQuizMutation.variables?.concept_id === quiz.concept_id;
 
               return (
                 <QuizCard
@@ -614,8 +631,6 @@ export function LearningRecordScreen({ navigation }: LearningRecordScreenProps) 
           ? arenaRecords.map((record) => <ArenaCard key={record.id} {...record} />)
           : null}
       </ScrollView>
-
-      <BottomNavMock />
     </SafeAreaView>
   );
 }
@@ -626,34 +641,56 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    alignItems: 'center',
     backgroundColor: colors.surface,
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
+    minHeight: 72,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  headerRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
-    minHeight: 56,
-    paddingHorizontal: 16,
+    justifyContent: 'space-between',
   },
-  headerBackButton: {
-    alignItems: 'center',
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
-  },
-  headerBackButtonText: {
-    color: colors.text,
-    fontSize: 24,
-    lineHeight: 24,
+  headerTextGroup: {
+    flex: 1,
+    gap: 6,
   },
   headerTitle: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  headerSubtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  headerActionButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 38,
+    minWidth: 60,
+    paddingHorizontal: 14,
+  },
+  headerActionButtonPressed: {
+    opacity: 0.88,
+  },
+  headerActionButtonText: {
+    color: colors.text,
+    fontSize: 13,
     fontWeight: '700',
   },
   scrollContent: {
     gap: 12,
-    paddingBottom: 120,
+    paddingBottom: 48,
     paddingHorizontal: 16,
     paddingTop: 16,
   },
@@ -729,7 +766,7 @@ const styles = StyleSheet.create({
   reportMentor: {
     color: colors.primary,
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   reportTitle: {
     color: colors.text,
@@ -809,7 +846,9 @@ const styles = StyleSheet.create({
     width: 36,
   },
   quizIndicatorText: {
-    fontSize: 18,
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '800',
   },
   quizBody: {
     flex: 1,
@@ -862,9 +901,9 @@ const styles = StyleSheet.create({
   },
   quizArrow: {
     color: colors.muted,
-    fontSize: 24,
+    fontSize: 20,
     lineHeight: 24,
-    marginTop: 20,
+    marginTop: 18,
   },
   quizDetail: {
     borderTopColor: colors.border,
@@ -994,7 +1033,7 @@ const styles = StyleSheet.create({
   },
   avatarLetter: {
     color: colors.primary,
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '700',
   },
   avatarLabel: {
@@ -1003,7 +1042,7 @@ const styles = StyleSheet.create({
   },
   arenaVs: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '700',
     marginTop: 12,
   },
@@ -1018,61 +1057,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginTop: 4,
-  },
-  bottomNav: {
-    backgroundColor: colors.surface,
-    bottom: 0,
-    height: 82,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-  },
-  bottomNavDivider: {
-    backgroundColor: colors.border,
-    height: 1,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  bottomNavTabs: {
-    flexDirection: 'row',
-    paddingHorizontal: 0,
-    paddingTop: 6,
-  },
-  bottomNavTab: {
-    alignItems: 'center',
-    flex: 1,
-    gap: 8,
-    height: 60,
-    justifyContent: 'center',
-  },
-  bottomNavTabActive: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: 18,
-    marginHorizontal: 8,
-  },
-  bottomNavIcon: {
-    fontSize: 22,
-  },
-  bottomNavLabel: {
-    color: '#AFB4B0',
-    fontSize: 11,
-  },
-  bottomNavLabelActive: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  homeIndicator: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(25, 28, 26, 0.15)',
-    borderRadius: 2,
-    height: 4,
-    marginTop: 6,
-    width: 134,
   },
 });

@@ -3,7 +3,7 @@ import logging
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select, text
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.cache import make_cache
 from core.config import settings
-from core.contracts import UserId, UserSignedUpEvent
+from core.contracts import UserId, UserSignedUpEvent, UserUpdatedEvent
 from core.db import get_db
 from core.event_bus import event_bus
 from core.exceptions import (
@@ -502,3 +502,14 @@ async def _sync_pk_sequence(
 @router.get("/me", response_model=UserResponse)
 async def get_me(user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse.from_user(user)
+
+
+@router.delete("/me", status_code=204)
+async def delete_me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    user.status = "deleted"
+    await db.commit()
+    await event_bus.publish(UserUpdatedEvent(user_id=UserId(user.id), fields=["status"]))
+    return Response(status_code=204)

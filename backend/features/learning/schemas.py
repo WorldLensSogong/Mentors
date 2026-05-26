@@ -67,6 +67,9 @@ class QuizRes(BaseModel):
     concept_name: str
     question: str
     options: list[QuizOption]
+    attempted: bool = False
+    solved: bool = False
+    last_result_correct: bool | None = None
 
 
 class TierQuizCatalogRes(BaseModel):

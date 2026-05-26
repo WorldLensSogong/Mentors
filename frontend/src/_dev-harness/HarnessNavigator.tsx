@@ -5,19 +5,23 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { getOnboardingStatus } from '@/features/onboarding/api';
 import { useUserStore } from '@/store/userStore';
-import { DevLoginScreen } from './screens/DevLoginScreen';
-import { LearningRecordScreen } from './screens/LearningRecordScreen';
-import { OnboardingScreen } from './screens/OnboardingScreen';
-import { PromotionTestScreen } from './screens/PromotionTestScreen';
+import { MainTabNavigator } from './MainTabNavigator';
 import { resolveEntryScreenState } from './navigation/logic';
 import type { RootStackParamList } from './navigation/types';
+import { buildCompletedProfileFromStatus } from './onboarding/logic';
+import { ChatHistoryScreen } from './screens/ChatHistoryScreen';
+import { DevLoginScreen } from './screens/DevLoginScreen';
+import { InterestSettingsScreen } from './screens/InterestSettingsScreen';
+import { OnboardingScreen } from './screens/OnboardingScreen';
+import { PromotionTestScreen } from './screens/PromotionTestScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function LoadingScreen() {
   return (
     <View style={styles.loadingContainer}>
-      <Text style={styles.loadingTitle}>기존 온보딩 상태를 확인하고 있어요.</Text>
+      <Text style={styles.loadingTitle}>기존 온보딩 상태를 확인하고 있습니다</Text>
       <Text style={styles.loadingDescription}>
         서버에 저장된 온보딩 정보가 있으면 바로 학습 기록 화면으로 이어집니다.
       </Text>
@@ -39,7 +43,7 @@ export function HarnessNavigator() {
   useEffect(() => {
     if (onboardingStatusQuery.data?.onboarded && !hasCompletedOnboarding) {
       finishOnboarding({
-        profile: null,
+        profile: buildCompletedProfileFromStatus(onboardingStatusQuery.data),
         source: 'remote',
       });
     }
@@ -70,13 +74,42 @@ export function HarnessNavigator() {
 
       {entryScreenState === 'home' ? (
         <>
-          <Stack.Screen name="Home" component={LearningRecordScreen} />
+          <Stack.Screen name="Home" component={MainTabNavigator} />
           <Stack.Screen
             name="PromotionTest"
             component={PromotionTestScreen}
             options={{
               headerShown: true,
-              title: '승급시험',
+              title: '승급 시험',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.text,
+            }}
+          />
+          <Stack.Screen
+            name="Settings"
+            component={SettingsScreen}
+            options={{
+              animation: 'slide_from_right',
+              headerShown: true,
+              title: '설정',
+              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.text,
+            }}
+          />
+          <Stack.Screen
+            name="InterestSettings"
+            component={InterestSettingsScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen
+            name="ChatHistory"
+            component={ChatHistoryScreen}
+            options={{
+              animation: 'slide_from_right',
+              headerShown: true,
+              title: '채팅 기록',
               headerShadowVisible: false,
               headerStyle: { backgroundColor: colors.background },
               headerTintColor: colors.text,

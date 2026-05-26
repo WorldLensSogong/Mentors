@@ -10,6 +10,8 @@ MVP 시드는 개념당 1개. 클라이언트 응답은 `QuizView`(concept_name 
 구조는 이미 `dict[ConceptId, list[QuizItem]]`이라 데이터만 추가하면 됨.
 """
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +44,13 @@ class QuizView(BaseModel):
     options: list[str]
     correct_index: int
     explanation: str
+
+
+@dataclass(slots=True)
+class QuizAttemptSummary:
+    attempted: bool
+    solved: bool
+    last_result_correct: bool | None
 
 
 # --- 시드 데이터: VALUE 23개 (개념당 1개) ---
@@ -583,11 +592,58 @@ async def pick_for_user(
     return _pick_from_pool(pool, mastered)
 
 
+async def summarize_attempts_for_concepts(
+    user_id: UserId,
+    concept_ids: list[int],
+    db: AsyncSession,
+) -> dict[int, QuizAttemptSummary]:
+    """개념별 퀴즈 풀이 상태를 요약한다."""
+    if not concept_ids:
+        return {}
+
+    stmt = (
+        select(
+            QuizAttempt.concept_id,
+            QuizAttempt.correct,
+            QuizAttempt.created_at,
+            QuizAttempt.id,
+        )
+        .where(
+            QuizAttempt.user_id == user_id,
+            QuizAttempt.concept_id.in_(concept_ids),
+        )
+        .order_by(
+            QuizAttempt.concept_id.asc(),
+            QuizAttempt.created_at.asc(),
+            QuizAttempt.id.asc(),
+        )
+    )
+    result = await db.execute(stmt)
+
+    summaries: dict[int, QuizAttemptSummary] = {}
+    for concept_id, correct, _created_at, _attempt_id in result.all():
+        existing = summaries.get(concept_id)
+        if existing is None:
+            summaries[concept_id] = QuizAttemptSummary(
+                attempted=True,
+                solved=bool(correct),
+                last_result_correct=bool(correct),
+            )
+            continue
+
+        existing.solved = existing.solved or bool(correct)
+        existing.last_result_correct = bool(correct)
+
+    return summaries
+
+
 __all__ = [
+    "QuizAttemptSummary",
     "QuizItem",
     "QuizView",
     "get_quiz",
     "grade_quiz",
     "pick_for_user",
     "record_attempt",
+    "summarize_attempts_for_concepts",
 ]

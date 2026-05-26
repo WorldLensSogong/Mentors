@@ -5,10 +5,13 @@
 
 ## 무엇이 들어있나
 
-- `HarnessNavigator.tsx` — harness 전용 navigator. `DevLogin → Onboarding → LearningRecord → PromotionTest` 단일 흐름.
-- `screens/` — 4개 화면 (백엔드 PR마다 추가됨)
+- `HarnessNavigator.tsx` — harness 전용 navigator. `DevLogin → Onboarding → Home Tabs(LearningRecord, MentorChat) + Stack(Settings, ChatHistory, PromotionTest)` 흐름.
+- `MainTabNavigator.tsx` — harness 홈 탭 navigator. 학습 기록과 멘토 채팅 화면을 묶음.
+- `screens/` — 여러 검증 화면 (백엔드 PR마다 추가됨)
 - `components/` — 화면 보조 UI
 - `navigation/` — harness navigator가 쓰는 routing 타입/로직
+- `settings/` — 설정 화면 전용 로직과 로컬 알림 유틸
+- `store/` — harness 전용 zustand store
 - `utils/` — harness 전용 유틸 (dev 토큰 마스킹 등)
 
 ## 진짜 frontend는 어디

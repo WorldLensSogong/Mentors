@@ -7,7 +7,13 @@ import sqlalchemy as sa
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.contracts import MentorId, OnboardingCompletedEvent, Tier, UserId
+from core.contracts import (
+    MentorId,
+    OnboardingCompletedEvent,
+    Tier,
+    UserId,
+    UserUpdatedEvent,
+)
 from core.event_bus import event_bus
 from core.exceptions import BadRequestError
 
@@ -73,6 +79,7 @@ async def get_onboarding_status(
     return OnboardingStatusResponse(
         onboarded=profile.onboarding_completed_at is not None,
         tier=_coerce_tier(profile.current_tier),
+        profile=_build_profile_summary_from_model(profile),
         selected_mentor=_build_selected_mentor(profile),
         completed_at=profile.onboarding_completed_at,
     )
@@ -92,25 +99,26 @@ async def save_onboarding_profile(
     profile.preferred_style = payload.preferred_style
     profile.interests_json = json.dumps(payload.interests, ensure_ascii=False)
 
-    await db.execute(
-        delete(OnboardingSurveyAnswer).where(
-            OnboardingSurveyAnswer.user_id == int(user_id)
-        )
-    )
-    for answer in payload.answers:
-        db.add(
-            OnboardingSurveyAnswer(
-                user_id=int(user_id),
-                question_code=answer.question_code,
-                question_text=answer.question_text,
-                answer_value=answer.answer_value,
-                answer_payload_json=(
-                    json.dumps(answer.answer_payload, ensure_ascii=False)
-                    if answer.answer_payload is not None
-                    else None
-                ),
+    if payload.answers:
+        await db.execute(
+            delete(OnboardingSurveyAnswer).where(
+                OnboardingSurveyAnswer.user_id == int(user_id)
             )
         )
+        for answer in payload.answers:
+            db.add(
+                OnboardingSurveyAnswer(
+                    user_id=int(user_id),
+                    question_code=answer.question_code,
+                    question_text=answer.question_text,
+                    answer_value=answer.answer_value,
+                    answer_payload_json=(
+                        json.dumps(answer.answer_payload, ensure_ascii=False)
+                        if answer.answer_payload is not None
+                        else None
+                    ),
+                )
+            )
 
     await db.commit()
 
@@ -151,12 +159,62 @@ async def select_onboarding_mentor(
     return OnboardingStatusResponse(
         onboarded=True,
         tier=Tier.T1,
+        profile=_build_profile_summary_from_model(profile),
         selected_mentor=SelectedMentorResponse(
             id=mentor.id,
             slug=mentor.slug,
             name=mentor.name,
         ),
         completed_at=profile.onboarding_completed_at,
+    )
+
+
+async def reset_onboarding_profile(
+    user_id: UserId,
+    db: AsyncSession,
+) -> OnboardingStatusResponse:
+    profile = await _get_profile(db, user_id)
+    if profile is None:
+        return OnboardingStatusResponse(onboarded=False, tier=Tier.T1)
+
+    profile.current_tier = Tier.T1.value
+    profile.selected_mentor_id = None
+    profile.selected_mentor_slug = None
+    profile.risk_profile = None
+    profile.experience_level = None
+    profile.learning_goal = None
+    profile.preferred_style = None
+    profile.interests_json = None
+    profile.onboarding_completed_at = None
+
+    await db.execute(
+        delete(OnboardingSurveyAnswer).where(OnboardingSurveyAnswer.user_id == int(user_id))
+    )
+    await db.commit()
+
+    await event_bus.publish(
+        UserUpdatedEvent(
+            user_id=user_id,
+            fields=[
+                "current_tier",
+                "selected_mentor_id",
+                "selected_mentor_slug",
+                "risk_profile",
+                "experience_level",
+                "learning_goal",
+                "preferred_style",
+                "interests_json",
+                "onboarding_completed_at",
+            ],
+        )
+    )
+
+    return OnboardingStatusResponse(
+        onboarded=False,
+        tier=Tier.T1,
+        profile=None,
+        selected_mentor=None,
+        completed_at=None,
     )
 
 
@@ -206,6 +264,33 @@ def _build_profile_summary(payload: OnboardingProfileRequest) -> OnboardingProfi
         risk_profile=payload.risk_profile,
         learning_goal=payload.learning_goal,
         preferred_style=payload.preferred_style,
+    )
+
+
+def _build_profile_summary_from_model(profile: UserProfile) -> OnboardingProfileSummary | None:
+    if (
+        profile.experience_level is None
+        or profile.risk_profile is None
+        or profile.learning_goal is None
+        or profile.preferred_style is None
+    ):
+        return None
+
+    try:
+        raw_interests = json.loads(profile.interests_json) if profile.interests_json else []
+    except json.JSONDecodeError:
+        raw_interests = []
+
+    interests = [value for value in raw_interests if isinstance(value, str)]
+    if not interests:
+        return None
+
+    return OnboardingProfileSummary(
+        experience_level=profile.experience_level,
+        interests=interests,
+        risk_profile=profile.risk_profile,
+        learning_goal=profile.learning_goal,
+        preferred_style=profile.preferred_style,
     )
 
 
@@ -321,6 +406,7 @@ __all__ = [
     "get_mentor_by_id",
     "get_onboarding_status",
     "recommend_mentors",
+    "reset_onboarding_profile",
     "save_onboarding_profile",
     "select_onboarding_mentor",
 ]

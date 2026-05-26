@@ -24,3 +24,8 @@ export async function saveMentorSelection(
   const response = await apiClient.post<OnboardingStatusResponse>('/api/onboarding/select-mentor', payload);
   return response.data;
 }
+
+export async function resetOnboardingProfile(): Promise<OnboardingStatusResponse> {
+  const response = await apiClient.post<OnboardingStatusResponse>('/api/onboarding/reset');
+  return response.data;
+}
