@@ -12,6 +12,7 @@ import {
 } from '@/features/growth/api';
 import type { PromotionTestQuestion, PromotionTestResponse } from '@/features/growth/types';
 import {
+  buildGrowthProgressQueryKey,
   buildPromotionTestPayload,
   getPromotionResultHeadline,
   getUnlockLabel,
@@ -31,11 +32,10 @@ function ResultCard({
 }) {
   return (
     <View style={styles.resultCard}>
-      <Text style={styles.resultEyebrow}>{result.passed ? 'Promotion Passed' : 'Retry Ready'}</Text>
+      <Text style={styles.resultEyebrow}>{result.passed ? '승급 성공' : '재도전 가능'}</Text>
       <Text style={styles.resultTitle}>{getPromotionResultHeadline(result)}</Text>
       <Text style={styles.resultDescription}>
-        {result.correct_answers}/{result.total_questions}문항 정답, 최종 점수 {result.score_percent}
-        점
+        {result.correct_answers}/{result.total_questions}문항 정답, 최종 점수 {result.score_percent}점
       </Text>
       <Text style={styles.resultMessage}>{result.message}</Text>
       {result.unlocked_features.length > 0 ? (
@@ -49,7 +49,7 @@ function ResultCard({
       ) : null}
       <Pressable onPress={onPressPrimary} style={styles.primaryButton}>
         <Text style={styles.primaryButtonText}>
-          {result.passed ? '홈으로 돌아가기' : '다시 확인하기'}
+          {result.passed ? '기록 화면으로 돌아가기' : '결과 다시 확인하기'}
         </Text>
       </Pressable>
       {onPressSecondary ? (
@@ -104,7 +104,7 @@ export function PromotionTestScreen({ navigation }: PromotionTestScreenProps) {
   const [answersByQuestionId, setAnswersByQuestionId] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [latestResult, setLatestResult] = useState<PromotionTestResponse | null>(null);
-  const queryKey = ['growth-progress', accessToken];
+  const queryKey = buildGrowthProgressQueryKey(accessToken);
   const progressQuery = useQuery({
     queryKey,
     queryFn: getGrowthProgress,
@@ -159,10 +159,11 @@ export function PromotionTestScreen({ navigation }: PromotionTestScreenProps) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.heroCard}>
-        <Text style={styles.eyebrow}>Promotion Test</Text>
-        <Text style={styles.heroTitle}>승급시험</Text>
+        <Text style={styles.eyebrow}>승급시험</Text>
+        <Text style={styles.heroTitle}>다음 티어로 올라갈 준비가 됐는지 확인해요</Text>
         <Text style={styles.heroDescription}>
-          이해도 게이지가 80%를 넘으면 현재 티어에서 다음 티어로 넘어가는 시험에 응시할 수 있어요.
+          이해도 게이지가 80%를 넘기면 현재 티어에서 다음 티어로 넘어가는 승급시험에 응시할 수
+          있어요.
         </Text>
       </View>
 
@@ -170,8 +171,8 @@ export function PromotionTestScreen({ navigation }: PromotionTestScreenProps) {
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>로그인 후 승급시험을 진행할 수 있어요</Text>
           <Text style={styles.infoDescription}>
-            현재 앱은 로컬 온보딩도 지원하지만, 성장 데이터와 시험 결과는 서버 계정과 함께
-            저장됩니다.
+            성장 데이터와 시험 결과는 로그인한 계정에 저장되므로, 먼저 로그인 상태를 확인해
+            주세요.
           </Text>
         </View>
       ) : null}
@@ -213,7 +214,7 @@ export function PromotionTestScreen({ navigation }: PromotionTestScreenProps) {
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>아직 응시 가능한 승급시험이 없어요</Text>
           <Text style={styles.infoDescription}>
-            홈 화면의 성장 카드에서 이해도 게이지를 확인하고, 80% 이상이 되면 다시 들어와 주세요.
+            기록 화면에서 이해도 게이지를 확인하고, 80% 이상이 되면 다시 들어와 주세요.
           </Text>
         </View>
       ) : null}
@@ -283,8 +284,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   heroTitle: {
     color: colors.text,
@@ -427,8 +427,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   resultTitle: {
     color: colors.text,

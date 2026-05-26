@@ -1,11 +1,13 @@
 const assert = require('node:assert/strict');
 
 const {
+  applyOptimisticSolvedQuizProgress,
+  buildGrowthProgressQueryKey,
   buildPromotionTestPayload,
   didGrowthProgressAdvance,
+  getGrowthStageCopy,
   getLearningRecordHintMessage,
   getLearningRecordSegments,
-  getGrowthStageCopy,
   getPromotionResultHeadline,
   getUnlockLabel,
   isPromotionTestComplete,
@@ -82,7 +84,7 @@ assert.equal(getUnlockLabel('mystery_feature'), 'mystery feature');
 assert.deepEqual(getLearningRecordSegments({ reports: 3, quizzes: 5, arenas: 4 }), [
   { key: 'reports', label: '리포트 3' },
   { key: 'quizzes', label: '퀴즈 5' },
-  { key: 'arenas', label: '투기장 4' },
+  { key: 'arenas', label: '아레나 4' },
 ]);
 
 assert.equal(
@@ -106,16 +108,37 @@ assert.equal(
   'a higher mastered concept count should be treated as synced growth progress',
 );
 
-assert.equal(getLearningRecordHintMessage('reports'), '이해도 칩을 탭하면 다시 수정할 수 있어요');
+assert.deepEqual(
+  applyOptimisticSolvedQuizProgress({
+    ...eligibleProgress,
+    progress_percent: 60,
+    mastered_concepts: 3,
+    promotion_test: null,
+    eligible_for_promotion: false,
+  }),
+  {
+    ...eligibleProgress,
+    progress_percent: 80,
+    mastered_concepts: 4,
+    promotion_test: null,
+    eligible_for_promotion: true,
+  },
+  'a newly solved quiz should immediately raise the local growth gauge without waiting for async event propagation',
+);
+
+assert.equal(
+  getLearningRecordHintMessage('reports'),
+  '이해도에 맞춘 리포트를 다시 열어보고, 놓친 흐름을 복기해 보세요.',
+);
 assert.equal(
   getLearningRecordHintMessage('quizzes'),
-  '문항을 탭하면 풀이와 결과를 다시 볼 수 있어요',
+  '멘토 채팅 퀴즈와 개념 퀴즈 결과가 여기에서 함께 갱신돼요.',
 );
 
 assert.deepEqual(getGrowthStageCopy(eligibleProgress), {
   badge: '승급 가능',
-  title: 'T2 승급시험에 도전할 수 있어요',
-  description: '현재 티어 이해도 80%를 달성했어요. 지금 바로 시험을 시작할 수 있어요.',
+  title: 'T2 승급시험을 볼 준비가 됐어요',
+  description: '현재 티어 이해도 80%를 달성했어요. 지금 바로 승급시험을 시작할 수 있어요.',
 });
 
 assert.deepEqual(
@@ -129,7 +152,7 @@ assert.deepEqual(
   {
     badge: '성장 진행 중',
     title: '현재 T1 이해도를 쌓는 중이에요',
-    description: '개념 2/5개를 완료했어요. 승급시험까지 40% 더 채우면 됩니다.',
+    description: '개념 2/5개를 완료했어요. 승급시험까지 40%만 더 채우면 돼요.',
   },
 );
 
@@ -161,6 +184,18 @@ assert.equal(
     message: 'Promotion test not passed. You can retry immediately.',
   }),
   '이번에는 T2 유지예요',
+);
+
+assert.deepEqual(
+  buildGrowthProgressQueryKey('token'),
+  ['growth-progress', 'token'],
+  'growth progress query keys should stay identical across screens so chat quiz submissions refresh the same gauge',
+);
+
+assert.deepEqual(
+  buildGrowthProgressQueryKey(null),
+  ['growth-progress', null],
+  'growth progress query keys should also be stable before authentication is available',
 );
 
 console.log('growth logic tests passed');

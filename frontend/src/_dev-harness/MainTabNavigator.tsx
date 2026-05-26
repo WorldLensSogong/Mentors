@@ -1,9 +1,9 @@
 import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { colors } from '@/constants/colors';
-import { LearningRecordScreen } from './screens/LearningRecordScreen';
-import { SettingsScreen } from './screens/SettingsScreen';
 import type { MainTabParamList } from './navigation/types';
+import { LearningRecordScreen } from './screens/LearningRecordScreen';
+import { MentorChatScreen } from './screens/MentorChatScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -50,11 +50,11 @@ export function MainTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
+        name="MentorChat"
+        component={MentorChatScreen}
         options={{
-          title: '설정',
-          tabBarIcon: ({ focused }) => <TabIcon focused={focused} label="설정" />,
+          title: '멘토',
+          tabBarIcon: ({ focused }) => <TabIcon focused={focused} label="멘토" />,
         }}
       />
     </Tab.Navigator>

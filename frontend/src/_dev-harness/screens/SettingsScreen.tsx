@@ -47,7 +47,7 @@ import {
 import { type ReminderPreferences, useSettingsStore } from '../store/settingsStore';
 
 const QUICK_REMINDER_TIMES = ['08:00', '12:30', '19:00', '21:00'] as const;
-type SettingsNavigation = NativeStackNavigationProp<RootStackParamList, 'Home'>;
+type SettingsNavigation = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
 function Section({
   title,
@@ -400,8 +400,8 @@ export function SettingsScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>Personal Settings</Text>
+          <View style={styles.hero}>
+            <Text style={styles.heroEyebrow}>개인 설정</Text>
           <Text style={styles.heroTitle}>내 학습 환경을 정리해보세요</Text>
           <Text style={styles.heroDescription}>
             계정 정보, 학습 취향, 리마인드 시간을 한곳에서 관리할 수 있어요.
@@ -451,6 +451,7 @@ export function SettingsScreen() {
 
           <View style={styles.actionColumn}>
             <ActionButton label="로그아웃" onPress={handleLogout} />
+            <ActionButton label="채팅 기록 보기" onPress={() => navigation.navigate('ChatHistory')} />
             <ActionButton
               label={deleteAccountMutation.isPending ? '계정 삭제 중...' : '계정 삭제'}
               tone="danger"

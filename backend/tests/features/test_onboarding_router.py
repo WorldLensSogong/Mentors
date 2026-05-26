@@ -62,7 +62,7 @@ def test_onboarding_status_returns_service_payload(monkeypatch: pytest.MonkeyPat
             "selected_mentor": {
                 "id": 1,
                 "slug": "warren-buffett",
-                "name": "Warren Buffett",
+                "name": "워런 버핏",
             },
             "completed_at": "2026-05-13T00:00:00Z",
         }
@@ -99,10 +99,10 @@ def test_onboarding_profile_route_returns_recommendations(monkeypatch: pytest.Mo
                 {
                     "id": 1,
                     "slug": "warren-buffett",
-                    "name": "Warren Buffett",
-                    "title": "Value Investing Mentor",
-                    "summary": "Long-term value lens",
-                    "reason": "Matches a steady beginner profile.",
+                    "name": "워런 버핏",
+                    "title": "가치 투자 멘토",
+                    "summary": "장기 복리 관점으로 설명합니다.",
+                    "reason": "차분한 초보 투자자 성향과 잘 맞습니다.",
                 }
             ],
         }
@@ -127,7 +127,7 @@ def test_onboarding_profile_route_returns_recommendations(monkeypatch: pytest.Mo
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json()["recommended_mentors"][0]["name"] == "Warren Buffett"
+    assert response.json()["recommended_mentors"][0]["name"] == "워런 버핏"
 
 
 def test_onboarding_select_mentor_route_returns_completion(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -140,7 +140,7 @@ def test_onboarding_select_mentor_route_returns_completion(monkeypatch: pytest.M
             "selected_mentor": {
                 "id": 1,
                 "slug": "warren-buffett",
-                "name": "Warren Buffett",
+                "name": "워런 버핏",
             },
             "completed_at": "2026-05-13T00:00:00Z",
         }
@@ -157,7 +157,7 @@ def test_onboarding_select_mentor_route_returns_completion(monkeypatch: pytest.M
 
     assert response.status_code == 200
     assert response.json()["tier"] == "T1"
-    assert response.json()["selected_mentor"]["name"] == "Warren Buffett"
+    assert response.json()["selected_mentor"]["name"] == "워런 버핏"
 
 
 def test_onboarding_reset_route_requires_auth() -> None:

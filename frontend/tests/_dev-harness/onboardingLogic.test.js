@@ -2,18 +2,17 @@ const assert = require('node:assert/strict');
 
 const {
   buildCompletedStatusFromSurvey,
-  buildRecommendedMentorsFromApi,
   buildProfilePayload,
+  buildRecommendedMentorsFromApi,
   getOnboardingProgressValue,
   getOnboardingStepLabel,
   getRecommendedMentors,
   isSurveyComplete,
 } = require('../../.tmp-harness-onboarding/_dev-harness/onboarding/logic.js');
 const {
-  onboardingInterestOptions,
-  interestOptions,
-  profileInterestOptions,
   getInterestLabel,
+  onboardingInterestOptions,
+  profileInterestOptions,
 } = require('../../.tmp-harness-onboarding/_dev-harness/onboarding/data.js');
 
 const survey = {
@@ -72,11 +71,10 @@ assert.equal(
 const [firstMentor] = getRecommendedMentors(survey);
 
 assert.equal(firstMentor.id, 1, 'a cautious beginner should be matched with mentor id 1 first');
-
 assert.equal(
   firstMentor.name,
-  'Warren Buffett',
-  'frontend fallback mentor data should be aligned to the real investor catalog',
+  '워런 버핏',
+  'frontend fallback mentor data should be aligned to the localized investor catalog',
 );
 
 assert.deepEqual(buildProfilePayload(survey), {
@@ -129,57 +127,44 @@ assert.deepEqual(
     selected_mentor: {
       id: 1,
       slug: 'warren-buffett',
-      name: 'Warren Buffett',
+      name: '워런 버핏',
     },
     completed_at: '2026-05-25T10:55:00.000Z',
   },
   'completed onboarding should be convertible into a populated status snapshot for immediate UI hydration',
 );
 
-assert.deepEqual(
-  buildRecommendedMentorsFromApi([
-    {
-      id: 2,
-      slug: 'peter-lynch',
-      name: 'Peter Lynch',
-      title: 'Everyday Stock Picking Mentor',
-      summary: 'Company-first research with practical examples and accessible explanations.',
-      reason: 'Peter Lynch is recommended because it supports the goal to understand-news.',
-    },
-  ])[0],
+const [decoratedRecommendation] = buildRecommendedMentorsFromApi([
   {
     id: 2,
     slug: 'peter-lynch',
-    name: 'Peter Lynch',
-    title: 'Everyday Stock Picking Mentor',
-    oneLiner: 'Company-first research with practical examples and accessible explanations.',
-    philosophy: '생활 속에서 이해한 기업을 꾸준히 관찰하면 좋은 아이디어는 가까이에 있다고 봅니다.',
-    idealFor: '뉴스와 기업 사례를 연결해서 개별 종목 감각을 키우고 싶은 사용자',
-    accentColor: '#C66B5A',
-    focusTags: [
-      'value',
-      'tech',
-      'it',
-      'bio',
-      'global',
-      'dividend',
-      'domestic-stock',
-      'us-stock',
-      'semiconductor',
-      'battery',
-      'ai',
-      'entertainment-media',
-      'fashion-consumer',
-    ],
-    experienceMatch: ['beginner', 'exploring', 'confident'],
-    riskMatch: ['balanced', 'bold'],
-    styleMatch: ['gentle', 'challenging'],
-    goalMatch: ['find-style', 'understand-news'],
-    strengths: ['생활밀착형 기업 분석', '쉬운 사례 중심 설명', '성장주 감각 키우기'],
-    score: 1,
-    reasons: ['Peter Lynch is recommended because it supports the goal to understand-news.'],
+    name: '피터 린치',
+    title: '생활밀착형 종목 발굴 멘토',
+    summary: '생활 속 기업 사례를 바탕으로 종목을 보는 관점을 잡아줘요.',
+    reason: '뉴스와 기업 이슈를 종목 아이디어로 연결하고 싶은 학습 목표에 잘 맞아요.',
   },
-  'API recommendation should be decorated with frontend presentation fields',
+]);
+
+assert.equal(decoratedRecommendation.id, 2);
+assert.equal(decoratedRecommendation.name, '피터 린치');
+assert.equal(decoratedRecommendation.title, '생활밀착형 종목 발굴 멘토');
+assert.equal(
+  decoratedRecommendation.oneLiner,
+  '생활 속 기업 사례를 바탕으로 종목을 보는 관점을 잡아줘요.',
+);
+assert.equal(decoratedRecommendation.score, 1);
+assert.deepEqual(decoratedRecommendation.reasons, [
+  '뉴스와 기업 이슈를 종목 아이디어로 연결하고 싶은 학습 목표에 잘 맞아요.',
+]);
+assert.equal(
+  decoratedRecommendation.focusTags.includes('it'),
+  true,
+  'decorated recommendations should keep the frontend mentor focus tags',
+);
+assert.equal(
+  decoratedRecommendation.strengths.length > 0,
+  true,
+  'decorated recommendations should preserve mentor presentation strengths',
 );
 
 console.log('onboarding logic tests passed');

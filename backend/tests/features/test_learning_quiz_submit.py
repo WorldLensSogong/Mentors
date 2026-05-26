@@ -5,6 +5,7 @@
 """
 
 import secrets
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -12,11 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.models import User
-from core.contracts import ConceptId, ConceptMasteredEvent, UserId
+from core.contracts import ConceptId, ConceptMasteredEvent, Tier, UserId
 from core.db import SessionLocal
 from core.event_bus import event_bus
 from features.learning.models import QuizAttempt
-from features.learning.router import submit_quiz
+from features.learning.router import list_current_tier_quizzes, submit_quiz
 from features.learning.schemas import SubmitQuizReq
 
 
@@ -152,3 +153,39 @@ async def test_submit_with_default_quiz_index(
     attempts = await _attempts_for(db_session, fixture_user.id, 6)
     assert len(attempts) == 1
     assert attempts[0].quiz_index == 0
+
+
+async def test_quiz_catalog_reflects_attempted_and_solved_state_after_chat_quiz(
+    db_session: AsyncSession,
+    fixture_user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    learning_router = importlib.import_module("features.learning.router")
+
+    class _FakeGrowthReader:
+        async def get_user_tier(self, _user_id: int) -> Tier:
+            return Tier.T1
+
+    monkeypatch.setattr(learning_router.growth_dep, "reader", lambda: _FakeGrowthReader())
+
+    user = SimpleNamespace(id=fixture_user.id)
+
+    initial_catalog = await list_current_tier_quizzes(user=user, db=db_session)  # type: ignore[arg-type]
+    initial_quiz = next((quiz for quiz in initial_catalog.quizzes if quiz.concept_id == 5), None)
+    assert initial_quiz is not None
+    assert initial_quiz.attempted is False
+    assert initial_quiz.solved is False
+    assert initial_quiz.last_result_correct is None
+
+    await submit_quiz(
+        SubmitQuizReq(concept_id=5, answer_index=1, quiz_index=0),
+        user=user,  # type: ignore[arg-type]
+        db=db_session,
+    )
+
+    updated_catalog = await list_current_tier_quizzes(user=user, db=db_session)  # type: ignore[arg-type]
+    updated_quiz = next((quiz for quiz in updated_catalog.quizzes if quiz.concept_id == 5), None)
+    assert updated_quiz is not None
+    assert updated_quiz.attempted is True
+    assert updated_quiz.solved is True
+    assert updated_quiz.last_result_correct is True

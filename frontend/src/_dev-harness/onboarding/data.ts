@@ -207,7 +207,7 @@ export const mentorCatalog: MentorProfile[] = [
   {
     id: 1,
     slug: 'warren-buffett',
-    name: 'Warren Buffett',
+    name: '워런 버핏',
     title: '가치 투자 멘토',
     oneLiner: '장기 복리와 기업 가치의 기본을 차분히 잡아주는 가치투자 멘토',
     philosophy:
@@ -224,7 +224,7 @@ export const mentorCatalog: MentorProfile[] = [
   {
     id: 2,
     slug: 'peter-lynch',
-    name: 'Peter Lynch',
+    name: '피터 린치',
     title: '생활형 종목 발굴 멘토',
     oneLiner: '생활 속 단서와 쉬운 설명으로 종목 판단 감각을 키워주는 멘토',
     philosophy: '생활 속에서 이해한 기업을 꾸준히 관찰하면 좋은 아이디어는 가까이에 있다고 봅니다.',
@@ -254,7 +254,7 @@ export const mentorCatalog: MentorProfile[] = [
   {
     id: 3,
     slug: 'ray-dalio',
-    name: 'Ray Dalio',
+    name: '레이 달리오',
     title: '거시 흐름과 포트폴리오 멘토',
     oneLiner: '거시 흐름과 분산 관점을 구조적으로 설명해 주는 포트폴리오 멘토',
     philosophy: '개별 종목보다 먼저 큰 흐름과 자산 배분을 이해하면 흔들림이 줄어든다고 봅니다.',

@@ -48,7 +48,7 @@ export function GrowthProgressCard({
   if (requiresAuth) {
     return (
       <View style={styles.card}>
-        <Text style={styles.eyebrow}>Growth</Text>
+        <Text style={styles.eyebrow}>성장</Text>
         <Text style={styles.title}>성장 현황은 로그인 후 확인할 수 있어요</Text>
         <Text style={styles.description}>
           온보딩은 로컬에서도 이어지지만, 티어와 승급시험은 서버 계정과 연결된 뒤에 조회할 수
@@ -61,7 +61,7 @@ export function GrowthProgressCard({
   if (isLoading) {
     return (
       <View style={styles.card}>
-        <Text style={styles.eyebrow}>Growth</Text>
+        <Text style={styles.eyebrow}>성장</Text>
         <Text style={styles.title}>성장 현황을 불러오는 중이에요</Text>
         <Text style={styles.description}>
           현재 티어와 승급시험 정보를 서버에서 확인하고 있어요.
@@ -73,7 +73,7 @@ export function GrowthProgressCard({
   if (errorMessage) {
     return (
       <View style={styles.card}>
-        <Text style={styles.eyebrow}>Growth</Text>
+        <Text style={styles.eyebrow}>성장</Text>
         <Text style={styles.title}>성장 정보를 가져오지 못했어요</Text>
         <Text style={styles.description}>{errorMessage}</Text>
       </View>
@@ -83,7 +83,7 @@ export function GrowthProgressCard({
   if (!progress) {
     return (
       <View style={styles.card}>
-        <Text style={styles.eyebrow}>Growth</Text>
+        <Text style={styles.eyebrow}>성장</Text>
         <Text style={styles.title}>아직 성장 데이터가 없어요</Text>
         <Text style={styles.description}>
           온보딩을 마친 뒤 다시 들어오면 티어와 이해도 게이지가 보이게 됩니다.
@@ -99,7 +99,7 @@ export function GrowthProgressCard({
     <View style={styles.card}>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>Growth</Text>
+          <Text style={styles.eyebrow}>성장</Text>
           <Text style={styles.title}>{stage.title}</Text>
           <Text style={styles.description}>{stage.description}</Text>
         </View>
@@ -115,7 +115,7 @@ export function GrowthProgressCard({
         </View>
         <View style={styles.tierPill}>
           <Text style={styles.tierLabel}>다음 티어</Text>
-          <Text style={styles.tierValue}>{progress.next_tier ?? 'MAX'}</Text>
+          <Text style={styles.tierValue}>{progress.next_tier ?? '완료'}</Text>
         </View>
       </View>
 

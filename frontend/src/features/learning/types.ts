@@ -8,6 +8,9 @@ export interface LearningQuiz {
   concept_name: string;
   question: string;
   options: LearningQuizOption[];
+  attempted: boolean;
+  solved: boolean;
+  last_result_correct: boolean | null;
 }
 
 export interface TierQuizCatalogResponse {
@@ -18,6 +21,7 @@ export interface TierQuizCatalogResponse {
 export interface SubmitLearningQuizRequest {
   concept_id: number;
   answer_index: number;
+  quiz_index?: number;
 }
 
 export interface SubmitLearningQuizResponse {
