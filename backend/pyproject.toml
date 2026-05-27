@@ -36,6 +36,9 @@ dependencies = [
     # Logging
     "python-json-logger>=2.0",
     "psycopg[binary]>=3.3.4",
+    #newspipeline
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
 ]
 
 [dependency-groups]
