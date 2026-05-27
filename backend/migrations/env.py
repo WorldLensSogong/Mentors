@@ -18,7 +18,23 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from core.auth.models import AuthIdentity, LocalCredential, User  # noqa: E402, F401
 from core.config import settings
 from core.db import Base
+from core.market_data.models import MarketEntity, MarketNewsItem  # noqa: E402, F401
 from core.push.models import DeviceToken  # noqa: E402, F401
+from features.debate.models import DebateMessage, DebateSession  # noqa: E402, F401
+from features.growth.models import (  # noqa: E402, F401
+    ConceptMastery,
+    PromotionTestAttempt,
+    TierState,
+)
+from features.learning.models import (  # noqa: E402, F401
+    ChatMessage,
+    ChatSession,
+    QuizAttempt,
+)
+from features.onboarding.models import (  # noqa: E402, F401
+    OnboardingSurveyAnswer,
+    UserProfile,
+)
 
 from features.content.models import (  # noqa: E402, F401
     ArticleKeyword,
@@ -32,22 +48,6 @@ from features.content.models import (  # noqa: E402, F401
     PipelineRun,
     Scrap,
     UserKeyword,
-)
-
-from features.growth.models import (  # noqa: E402, F401
-    ConceptMastery,
-    PromotionTestAttempt,
-    TierState,
-)
-from features.learning.models import (  # noqa: E402, F401
-    ChatMessage,
-    ChatSession,
-    QuizAttempt,
-)
-from features.debate.models import DebateMessage, DebateSession  # noqa: E402, F401
-from features.onboarding.models import (  # noqa: E402, F401
-    OnboardingSurveyAnswer,
-    UserProfile,
 )
 
 config = context.config
