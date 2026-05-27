@@ -67,12 +67,12 @@ frontend/
 
 // 2. _dev-harness/가 진짜 frontend 모듈을 import
 // _dev-harness/screens/Foo.tsx
-import { ChatScreen } from '@/features/chat/screens/ChatScreen';  // ❌
+import { ChatScreen } from '@/features/chat/screens/ChatScreen'; // ❌
 // _dev-harness는 진짜 frontend에 의존하지 않는다 (역방향 의존 X)
 
 // 3. 진짜 frontend가 _dev-harness/를 import
 // src/features/chat/screens/ChatScreen.tsx
-import { DevLoginScreen } from '@/_dev-harness/screens/DevLoginScreen';  // ❌
+import { DevLoginScreen } from '@/_dev-harness/screens/DevLoginScreen'; // ❌
 // 진짜 frontend는 harness를 모른다
 
 // 4. 외부 의존성 함부로 추가 금지
@@ -85,11 +85,11 @@ import { DevLoginScreen } from '@/_dev-harness/screens/DevLoginScreen';  // ❌
 
 ```ts
 // _dev-harness 안에서:
-import { colors } from '@/constants/colors';                            // 디자인 토큰
-import { useUserStore } from '@/store/userStore';                       // 전역 상태
-import { issueDevAccessToken } from '@/features/auth/api';              // 백엔드 동 wrapper
+import { colors } from '@/constants/colors'; // 디자인 토큰
+import { useUserStore } from '@/store/userStore'; // 전역 상태
+import { issueDevAccessToken } from '@/features/auth/api'; // 백엔드 동 wrapper
 import { saveOnboardingProfile } from '@/features/onboarding/api';
-import { GrowthProgressCard } from '../components/GrowthProgressCard';  // 같은 harness 내부
+import { GrowthProgressCard } from '../components/GrowthProgressCard'; // 같은 harness 내부
 import type { RootStackParamList } from '../navigation/types';
 
 // 진짜 frontend 안에서 (아직 없음, 채워질 예정):
@@ -147,6 +147,6 @@ import { apiClient } from '@/api/client';
 
 ## 8. 변경 이력
 
-| 날짜 | 변경 | by |
-|---|---|---|
+| 날짜       | 변경                                         | by      |
+| ---------- | -------------------------------------------- | ------- |
 | 2026-05-24 | 초안 작성 + `_dev-harness/` 분리 컨벤션 도입 | wang-gw |
