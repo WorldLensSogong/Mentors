@@ -36,6 +36,20 @@ from features.onboarding.models import (  # noqa: E402, F401
     UserProfile,
 )
 
+from features.content.models import (  # noqa: E402, F401
+    ArticleKeyword,
+    Industry,
+    IndustryKeyword,
+    KnowledgeChunk,
+    MasterKeyword,
+    MasterKeywordCompany,
+    NewsArticle,
+    NewsSource,
+    PipelineRun,
+    Scrap,
+    UserKeyword,
+)
+
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
