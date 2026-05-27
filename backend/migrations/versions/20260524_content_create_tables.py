@@ -1,12 +1,14 @@
 """content: create content_* tables (industries, master keywords, news, scraps, user keywords)
 
 Revision ID: 20260524_content_create_tables
-Revises: 20260523_auth_local_credentials
+Revises: 20260526_market_data_cache
 Create Date: 2026-05-24
 
 owner: content (5동)
 관련 FR/UC: FR-05, FR-06, FR-08, UC-05
-주의: 다른 PR이 먼저 머지되어 head가 바뀌면 down_revision 재조정 (AGENTS.md §5.9).
+주의: 파일명 날짜(0524)는 작성 시점이고, 실제 부모는 origin/main의 현재 head
+      (`20260526_market_data_cache`, market_data_cache PR이 learning_backfill 위에 머지됨).
+      AGENTS.md §5.9 — 다른 PR이 또 먼저 머지되면 down_revision 재조정.
 
 스키마 출처:
 - newspipeline/core/db/models.py 의 도메인 구조를 그대로 이식
@@ -24,7 +26,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260524_content_create_tables"
-down_revision: str | Sequence[str] | None = "20260523_auth_local_credentials"
+down_revision: str | Sequence[str] | None = "20260526_market_data_cache"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
