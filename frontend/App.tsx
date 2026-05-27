@@ -7,6 +7,13 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/queryClient';
 import { colors } from '@/constants/colors';
 import { HarnessNavigator } from '@/_dev-harness/HarnessNavigator';
+import { RootNavigator } from '@/navigation/RootNavigator';
+
+// -------------------------------------------------------------
+// 진짜 프론트엔드를 개발/테스트할 때는 true로 설정합니다.
+// false로 설정하면 백엔드 개발자들의 API 검증용 화면(harness)이 보입니다.
+// -------------------------------------------------------------
+const USE_REAL_FRONTEND = true;
 
 interface AppErrorBoundaryState {
   error: Error | null;
@@ -50,7 +57,7 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <NavigationContainer>
-            <HarnessNavigator />
+            {USE_REAL_FRONTEND ? <RootNavigator /> : <HarnessNavigator />}
             <StatusBar style="auto" />
           </NavigationContainer>
         </SafeAreaProvider>
