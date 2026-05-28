@@ -33,6 +33,7 @@ from core.vector_store import Document, vector_store
 
 from . import pipeline_utils as pu
 from .collectors import FinnhubCollector, GoogleNewsRSSCollector
+from .extractor import content_extractor
 from .models import (
     ArticleKeyword,
     KnowledgeChunk,
@@ -225,7 +226,14 @@ class ContentService:
         *,
         master_keyword: MasterKeyword,
     ) -> tuple[int, int]:
-        """dedup → 신뢰도 → DB row 생성. (saved_count, dup_count)"""
+        """dedup → 본문 재추출 → 신뢰도 → DB row 생성. (saved_count, dup_count).
+
+        RSS 본문은 메타데이터 스니펫이라 신뢰도/요약 품질이 낮음. 따라서:
+          1. URL canonical로 dedup
+          2. ContentExtractor로 풀 본문 + og:image 재추출 (실패 시 raw 그대로)
+          3. 풀 본문으로 reliability_score 재계산
+          4. NewsArticle INSERT
+        """
         saved = 0
         dups = 0
 
@@ -240,14 +248,19 @@ class ContentService:
                 await self._tag_article(session, existing.id, master_keyword.id)
                 continue
 
+            # 풀 본문 + 대표 이미지 재추출 (실패 시 raw fallback)
+            extracted_body, extracted_image = await content_extractor.extract(raw.url)
+            content = extracted_body or raw.content
+            image_url = extracted_image or raw.image_url
+
             score, level, reason = pu.reliability_score(
                 source_name=raw.source_name,
-                content=raw.content,
+                content=content,
                 published_at=raw.published_at,
                 title=raw.title,
             )
-            economy = pu.is_economy(raw.title, raw.content, raw.language)
-            strategies = pu.classify_strategies(raw.title, raw.content)
+            economy = pu.is_economy(raw.title, content, raw.language)
+            strategies = pu.classify_strategies(raw.title, content)
 
             article = NewsArticle(
                 source_name=raw.source_name,
@@ -256,9 +269,9 @@ class ContentService:
                 canonical_url=canonical,
                 language=raw.language,
                 title_original=raw.title,
-                content=raw.content,
+                content=content,
                 published_at=raw.published_at,
-                image_url=raw.image_url,
+                image_url=image_url,
                 reliability_score=score,
                 reliability_level=level,
                 reliability_reason=reason,
