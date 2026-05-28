@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from core.contracts import MentorStrategy, MessageRole
 from core.exceptions import ExternalServiceError
@@ -30,7 +33,13 @@ from core.vector_store import Document, vector_store
 
 from . import pipeline_utils as pu
 from .collectors import FinnhubCollector, GoogleNewsRSSCollector
-from .models import ArticleKeyword, KnowledgeChunk, MasterKeyword, NewsArticle
+from .models import (
+    ArticleKeyword,
+    KnowledgeChunk,
+    MasterKeyword,
+    MasterKeywordCompany,
+    NewsArticle,
+)
 from .schemas import AIProcessingResult, ArticleRaw
 
 logger = logging.getLogger("content.service")
@@ -47,6 +56,17 @@ VISIBLE_THRESHOLD = 70
 CHUNK_CHAR_LEN = 800
 CHUNK_OVERLAP_CHAR = 100
 
+# Priority-tier 스케줄러 캡 (newspipeline 기본값 유지, env override 가능).
+# 한 tick에서 fan-out할 회사 query의 상한 — P0가 P1+를 starve하지 않도록.
+_TIER_CAP = {
+    "P0": int(os.getenv("MAX_P0_PER_TICK", "15")),
+    "P1": int(os.getenv("MAX_P1_PER_TICK", "12")),
+    "P2": int(os.getenv("MAX_P2_PER_TICK", "8")),
+    "P3": int(os.getenv("MAX_P3_PER_TICK", "5")),
+}
+_GLOBAL_CAP = max(1, int(os.getenv("MAX_KEYWORDS_PER_TICK", "40")))
+_COMPANIES_PER_KEYWORD = int(os.getenv("COMPANIES_PER_KEYWORD", "5"))
+
 
 class ContentService:
     """수집 → AI → RAG 인덱싱 오케스트레이션. 싱글톤 사용 (jobs.py에서 인스턴스 생성)."""
@@ -58,58 +78,143 @@ class ContentService:
     # 1. Collection — 키워드 풀 순회 + dedup + DB 저장
     # ------------------------------------------------------------------
 
-    async def run_collection(self, session: AsyncSession, *, max_keywords: int = 25) -> dict[str, int]:
-        """한 tick: 활성 master_keyword를 우선순위·last_run_at 순으로 N개 가져와
-        각각 수집기 fan-out. dedup + 신뢰도 + AI큐 저장까지."""
-        keywords = await self._pick_keywords(session, limit=max_keywords)
-        if not keywords:
-            logger.info("content.collection_skipped", extra={"reason": "no_active_keywords"})
+    async def run_collection(
+        self, session: AsyncSession, *, max_keywords: int | None = None
+    ) -> dict[str, int]:
+        """한 tick: priority-tier 스케줄러로 due master_keywords를 뽑고,
+        각 master 안에서 회사를 회전(`last_fetched_at` asc) 시키며 검색.
+
+        - master_keyword.companies가 있으면 회사명으로 검색 (정확도 ↑)
+        - 없으면 키워드 텍스트로 폴백
+        - tick 후 master.last_run_at + next_run_at 스탬프, company.last_fetched_at 스탬프
+        """
+        global_cap = max_keywords if max_keywords is not None else _GLOBAL_CAP
+        targets = await self._load_due_targets(session, global_cap=global_cap)
+        if not targets:
+            logger.info("content.collection_skipped", extra={"reason": "no_due_targets"})
             return {"keywords": 0, "fetched": 0, "saved": 0, "duplicates": 0}
 
         fetched_total = 0
         saved_total = 0
         dup_total = 0
 
-        for kw in keywords:
-            raws = await self._fetch_for_keyword(kw.keyword, max_per_collector=5)
+        masters_used: dict[int, MasterKeyword] = {}
+        for target in targets:
+            master: MasterKeyword = target["master"]
+            masters_used[master.id] = master
+            query = target["query"]
+            max_articles = int(target["max_articles"])
+
+            raws = await self._fetch_query(query, max_per_collector=max_articles)
             fetched_total += len(raws)
-            saved, dups = await self._persist_articles(session, raws, master_keyword=kw)
+            saved, dups = await self._persist_articles(session, raws, master_keyword=master)
             saved_total += saved
             dup_total += dups
 
-            kw.last_run_at = datetime.now(timezone.utc)
+            company: MasterKeywordCompany | None = target.get("company")
+            if company is not None:
+                company.last_fetched_at = datetime.now(timezone.utc)
+
+        # tick 후 master 스케줄 스탬프 — 한 master가 여러 회사를 fanout 했어도 한 번만
+        now = datetime.now(timezone.utc)
+        for master in masters_used.values():
+            master.last_run_at = now
+            master.next_run_at = now + timedelta(minutes=master.collection_interval_minutes or 60)
 
         await session.commit()
         logger.info(
             "content.collection_done",
             extra={
-                "keywords": len(keywords),
+                "keywords": len(masters_used),
+                "queries": len(targets),
                 "fetched": fetched_total,
                 "saved": saved_total,
                 "duplicates": dup_total,
             },
         )
         return {
-            "keywords": len(keywords),
+            "keywords": len(masters_used),
+            "queries": len(targets),
             "fetched": fetched_total,
             "saved": saved_total,
             "duplicates": dup_total,
         }
 
-    async def _pick_keywords(self, session: AsyncSession, *, limit: int) -> list[MasterKeyword]:
+    async def _load_due_targets(
+        self, session: AsyncSession, *, global_cap: int
+    ) -> list[dict[str, Any]]:
+        """priority-tier scheduler. 반환: [{"master": MasterKeyword, "query": str,
+        "max_articles": int, "company": MasterKeywordCompany | None}, ...]
+
+        - is_active=True
+        - next_run_at IS NULL OR next_run_at <= now (없으면 기본 통과 — 첫 tick)
+        - priority asc, next_run_at asc nullsfirst
+        - 각 tier 캡 적용 후 master당 top-N companies (last_fetched_at asc)
+        """
+        now = datetime.now(timezone.utc)
         stmt = (
             select(MasterKeyword)
-            .where(MasterKeyword.is_active.is_(True))
-            .order_by(MasterKeyword.last_run_at.asc().nulls_first(), MasterKeyword.id.asc())
-            .limit(limit)
+            .options(selectinload(MasterKeyword.companies))
+            .where(
+                MasterKeyword.is_active.is_(True),
+                (MasterKeyword.next_run_at.is_(None)) | (MasterKeyword.next_run_at <= now),
+            )
+            .order_by(
+                MasterKeyword.priority.asc(),
+                MasterKeyword.next_run_at.asc().nulls_first(),
+            )
+            .limit(global_cap * 3)
         )
-        result = await session.execute(stmt)
-        return list(result.scalars().all())
+        candidates = list((await session.execute(stmt)).scalars().all())
 
-    async def _fetch_for_keyword(self, keyword: str, *, max_per_collector: int) -> list[ArticleRaw]:
+        seen_per_tier: dict[str, int] = defaultdict(int)
+        selected_masters: list[MasterKeyword] = []
+        for mkw in candidates:
+            tier = mkw.priority or "P2"
+            if seen_per_tier[tier] >= _TIER_CAP.get(tier, 5):
+                continue
+            selected_masters.append(mkw)
+            seen_per_tier[tier] += 1
+            if len(selected_masters) >= global_cap:
+                break
+
+        if not selected_masters:
+            return []
+
+        targets: list[dict[str, Any]] = []
+        for mkw in selected_masters:
+            companies = list(mkw.companies)
+            # 회사가 있으면 last_fetched_at asc로 회전, NULL(미수집) 우선
+            if companies:
+                companies.sort(
+                    key=lambda c: (c.last_fetched_at or datetime.min.replace(tzinfo=timezone.utc),
+                                   c.priority or 999)
+                )
+                for company in companies[:_COMPANIES_PER_KEYWORD]:
+                    targets.append({
+                        "master": mkw,
+                        "query": company.company_name,
+                        "max_articles": mkw.max_articles_per_run or 3,
+                        "company": company,
+                    })
+            else:
+                # 회사 매핑 없는 매크로 키워드(탄소배출권 등): 키워드 텍스트로 검색
+                targets.append({
+                    "master": mkw,
+                    "query": mkw.keyword,
+                    "max_articles": mkw.max_articles_per_run or 3,
+                    "company": None,
+                })
+
+        return targets
+
+    async def _fetch_query(
+        self, query: str, *, max_per_collector: int
+    ) -> list[ArticleRaw]:
+        """단일 쿼리(회사명 또는 키워드 텍스트)로 모든 collector fan-out."""
         out: list[ArticleRaw] = []
         for collector in self._collectors:
-            items = await collector.collect_safe(keyword, max_items=max_per_collector)
+            items = await collector.collect_safe(query, max_items=max_per_collector)
             out.extend(items)
         return out
 
