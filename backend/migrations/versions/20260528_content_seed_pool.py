@@ -37,7 +37,7 @@ from alembic import op
 
 from features.content.seed_data import INDUSTRY_COMPANIES, KEYWORD_SCHEDULE
 
-revision: str = "20260528_content_seed_industry_pool"
+revision: str = "20260528_content_seed_pool"
 down_revision: str | Sequence[str] | None = "20260524_content_create_tables"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
