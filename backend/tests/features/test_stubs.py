@@ -10,7 +10,7 @@ PROTECTED_ROUTES = [
     "/api/learning/sessions",
     "/api/growth/me/tier",
     "/api/debate/eligibility",
-    "/api/content/news/today",
+    "/api/content/news",
     "/api/daily-report/today",
 ]
 
