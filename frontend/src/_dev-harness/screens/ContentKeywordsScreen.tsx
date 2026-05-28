@@ -22,8 +22,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
-import { addMyKeyword, listMyKeywords, removeMyKeyword } from '@/features/content/api';
-import type { UserKeywordResponse, UserKeywordSource } from '@/features/content/types';
+import { addMyKeyword, listMyKeywords, removeMyKeyword } from '@/features/explore/content/api';
+import type { UserKeywordResponse, UserKeywordSource } from '@/features/explore/content/types';
 import { useUserStore } from '@/store/userStore';
 
 const SOURCE_LABEL: Record<UserKeywordSource, string> = {
