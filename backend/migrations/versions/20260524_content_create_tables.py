@@ -15,7 +15,13 @@ owner: content (5동)
 - mentors 컨벤션 적용: 테이블 prefix `content_`, user_id BigInteger + FK→users.id CASCADE,
   PEP 604 타입, alembic revision/down_revision 타입 시그니처
 - 산업 → 산업 키워드 → 마스터 키워드 → 대표 기업 계층은 PR-3 수집기가 활용.
-  PR-2 시점에서는 테이블 구조만 만들고 풀 시드(115개 산업)는 별도 작업.
+
+변경 이력:
+- 초기 버전은 구조 검증용 미니멀 시드(반도체/반도체 제조/Samsung/SK hynix)를 포함했음.
+  20260528_content_seed_industry_pool이 풀 시드(115 keywords + 603 companies)를
+  도입하면서 미니멀 시드는 redundant + explicit id=1 INSERT로 SERIAL 시퀀스가
+  advance 안 되는 부작용 발생 → 제거. 시퀀스 보정은 20260528 시작 단계에서
+  setval로 처리 (기존 DB의 잔여 시퀀스 stuck 상태도 함께 보정).
 """
 
 from __future__ import annotations
@@ -392,64 +398,9 @@ def upgrade() -> None:
         "ix_content_pipeline_runs_started", "content_pipeline_runs", ["started_at"]
     )
 
-    # ---- 미니멀 시드 (구조 검증용) -------------------------------------
-    # 풀 시드(115개 산업)는 별도 작업. 여기선 한 산업 → 한 키워드 → 두 기업까지만.
-    op.bulk_insert(
-        sa.table(
-            "content_industries",
-            sa.column("id", sa.Integer),
-            sa.column("name_ko", sa.String),
-            sa.column("name_en", sa.String),
-            sa.column("display_order", sa.Integer),
-        ),
-        [{"id": 1, "name_ko": "반도체", "name_en": "Semiconductor", "display_order": 1}],
-    )
-    op.bulk_insert(
-        sa.table(
-            "content_industry_keywords",
-            sa.column("id", sa.Integer),
-            sa.column("industry_id", sa.Integer),
-            sa.column("label_ko", sa.String),
-            sa.column("keyword_en", sa.String),
-            sa.column("display_order", sa.Integer),
-        ),
-        [
-            {"id": 1, "industry_id": 1, "label_ko": "반도체 제조",
-             "keyword_en": "semiconductor manufacturing", "display_order": 1},
-        ],
-    )
-    op.bulk_insert(
-        sa.table(
-            "content_master_keywords",
-            sa.column("id", sa.Integer),
-            sa.column("keyword", sa.String),
-            sa.column("language", sa.String),
-            sa.column("source", sa.String),
-            sa.column("industry_keyword_id", sa.Integer),
-            sa.column("priority", sa.String),
-            sa.column("is_active", sa.Boolean),
-        ),
-        [
-            {"id": 1, "keyword": "반도체 제조", "language": "ko", "source": "industry",
-             "industry_keyword_id": 1, "priority": "P0", "is_active": True},
-        ],
-    )
-    op.bulk_insert(
-        sa.table(
-            "content_master_keyword_companies",
-            sa.column("master_keyword_id", sa.Integer),
-            sa.column("company_name", sa.String),
-            sa.column("company_name_ko", sa.String),
-            sa.column("country", sa.String),
-            sa.column("priority", sa.Integer),
-        ),
-        [
-            {"master_keyword_id": 1, "company_name": "Samsung Electronics",
-             "company_name_ko": "삼성전자", "country": "KR", "priority": 1},
-            {"master_keyword_id": 1, "company_name": "SK hynix",
-             "company_name_ko": "SK하이닉스", "country": "KR", "priority": 2},
-        ],
-    )
+    # 시드 데이터는 20260528_content_seed_industry_pool에서 일괄 적용
+    # (32 industries + 115 keywords + 603 companies).
+    # 본 마이그레이션은 스키마만 생성 — explicit id INSERT 없음.
 
 
 def downgrade() -> None:
