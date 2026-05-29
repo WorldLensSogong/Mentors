@@ -133,7 +133,7 @@
 - `market_entities`에는 종목, 테마, 별칭, 섹터, 산업 정보를 저장합니다.
 - `market_news_items`에는 주기적으로 수집한 관련 뉴스 메타데이터를 저장합니다.
 - `MARKET_DATA_REFRESH_ENABLED=true`이면 APScheduler가 `MARKET_DATA_REFRESH_INTERVAL_MINUTES` 주기로 캐시 갱신 작업을 등록합니다.
-- `MARKET_DATA_DISCOVERY_ENABLED=true`이고 `FINNHUB_API_KEY`가 있으면, 캐시에 없는 신규 종목형 주제를 Finnhub 검색/프로필 API로 확인한 뒤 캐시에 저장합니다.
+- `MARKET_DATA_DISCOVERY_ENABLED=true`이고 `FINNHUB_API_KEY`가 있으면, 캐시에 없는 신규 종목형 주제를 Finnhub 검색/프로필 API로 확인한 뒤 종목과 산업 테마를 캐시에 저장합니다.
 - `MARKET_DATA_SEED_SYMBOLS`에는 startup refresh 때 미리 캐시에 적재할 대표 종목 심볼을 쉼표로 지정합니다.
 - 캐시에 매칭되는 종목이 있으면 `stock`, 테마가 있으면 `theme`으로 먼저 정규화하고, 매칭이 없을 때만 기존 룰 기반 판별로 fallback합니다.
 

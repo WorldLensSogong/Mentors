@@ -101,6 +101,8 @@ def test_topic_discovery_queries_strip_korean_particle_from_latin_name() -> None
 
 @pytest.mark.asyncio
 async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) -> None:
+    upsert_calls = []
+
     class FakeFinnhubClient:
         async def search_companies(self, query: str, *, limit: int = 5):
             assert query == "nvidia"
@@ -127,12 +129,13 @@ async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) ->
             return []
 
     async def fake_upsert_entity(db, **kwargs):
+        upsert_calls.append(kwargs)
         return market_data_models.MarketEntity(
             kind=kwargs["kind"],
             symbol=kwargs["symbol"],
             name=kwargs["name"],
             name_en=kwargs["name_en"],
-            exchange=kwargs["exchange"],
+            exchange=kwargs.get("exchange"),
             industry=kwargs["industry"],
             aliases=kwargs["aliases"],
             themes=kwargs["themes"],
@@ -155,3 +158,9 @@ async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) ->
     assert entity.source == "finnhub"
     assert "NVIDIA Corp" in entity.aliases
     assert "Semiconductors" in entity.themes
+    assert any(
+        call["kind"] == "theme"
+        and call["symbol"] == "INDUSTRY_SEMICONDUCTORS"
+        and call["source"] == "finnhub_profile"
+        for call in upsert_calls
+    )

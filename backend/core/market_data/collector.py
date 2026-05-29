@@ -196,8 +196,32 @@ async def upsert_external_stock(
         source="finnhub",
         confidence=80,
     )
+    await upsert_profile_industry_theme(db, profile)
     await refresh_entity_company_news(db, entity, client=client)
     return entity
+
+
+async def upsert_profile_industry_theme(
+    db: AsyncSession,
+    profile: FinnhubCompanyProfile,
+) -> MarketEntity | None:
+    industry = (profile.industry or "").strip()
+    if not industry:
+        return None
+
+    return await upsert_entity(
+        db,
+        kind="theme",
+        symbol=_industry_theme_symbol(industry),
+        name=industry,
+        name_en=industry,
+        sector=industry,
+        industry=industry,
+        aliases=_unique_nonempty([industry, f"{industry} industry"]),
+        themes=_unique_nonempty([industry, profile.country]),
+        source="finnhub_profile",
+        confidence=70,
+    )
 
 
 async def refresh_entity_company_news(
@@ -302,6 +326,11 @@ def _normalize_discovery_token(token: str) -> str:
     if latin_prefix:
         return latin_prefix.group(0)
     return stripped
+
+
+def _industry_theme_symbol(industry: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9가-힣]+", "_", industry.strip()).strip("_")
+    return f"INDUSTRY_{normalized.upper()[:31]}" if normalized else "INDUSTRY_UNKNOWN"
 
 
 def _is_supported_company(company: FinnhubCompany) -> bool:
