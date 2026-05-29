@@ -355,7 +355,7 @@ export function SearchScreen() {
         </Pressable>
 
         <Pressable
-          onPress={() => Alert.alert('투기장', '투기장 토론 화면은 S#05 구현 예정입니다.')}
+          onPress={() => navigation.navigate('DebateArena')}
           style={styles.bottomTabItem}
         >
           <Text style={styles.bottomTabIcon}>⚔️</Text>
