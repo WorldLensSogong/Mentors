@@ -12,7 +12,7 @@ Mentors/
 ├── backend/      # FastAPI + PostgreSQL + Redis + Chroma + LLM (Python 3.12+, uv)
 ├── frontend/     # Expo + React Native + TypeScript (iOS/Android/Web)
 ├── docs/         # 공용 문서
-├── tests/        # repo 레벨 통합 테스트 (있으면)
+├── tests/        # env.sample (테스트 환경 변수 샘플) — 실제 테스트 코드는 backend/tests/, frontend/tests/ 에
 └── .github/      # CI / labeler / CODEOWNERS
 ```
 
