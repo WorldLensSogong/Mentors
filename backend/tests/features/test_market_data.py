@@ -1,7 +1,11 @@
 import importlib
 
+import pytest
+
 debate_router = importlib.import_module("features.debate.router")
 debate_topic_resolver = importlib.import_module("features.debate.topic_resolver")
+market_data_collector = importlib.import_module("core.market_data.collector")
+market_data_finnhub = importlib.import_module("core.market_data.finnhub")
 market_data_models = importlib.import_module("core.market_data.models")
 market_data_repository = importlib.import_module("core.market_data.repository")
 
@@ -80,3 +84,74 @@ def test_stock_theme_labels_are_not_used_as_primary_match_names() -> None:
     assert stock_match is None
     assert theme_match is not None
     assert theme_match.entity.kind == "theme"
+
+
+def test_topic_discovery_queries_keep_unknown_company_name_first() -> None:
+    queries = market_data_collector._topic_discovery_queries("nvidia 전망")
+
+    assert queries[0] == "nvidia"
+    assert "전망" not in queries
+
+
+def test_topic_discovery_queries_strip_korean_particle_from_latin_name() -> None:
+    queries = market_data_collector._topic_discovery_queries("openai의 오너리스크")
+
+    assert queries == ["openai"]
+
+
+@pytest.mark.asyncio
+async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) -> None:
+    class FakeFinnhubClient:
+        async def search_companies(self, query: str, *, limit: int = 5):
+            assert query == "nvidia"
+            return [
+                market_data_finnhub.FinnhubCompany(
+                    symbol="NVDA",
+                    display_symbol="NVDA",
+                    description="NVIDIA Corp",
+                    kind="Common Stock",
+                )
+            ]
+
+        async def get_company_profile(self, symbol: str):
+            assert symbol == "NVDA"
+            return market_data_finnhub.FinnhubCompanyProfile(
+                symbol="NVDA",
+                name="NVIDIA Corp",
+                exchange="NASDAQ",
+                industry="Semiconductors",
+                country="US",
+            )
+
+        async def get_company_news(self, symbol: str, *, limit: int = 5):
+            return []
+
+    async def fake_upsert_entity(db, **kwargs):
+        return market_data_models.MarketEntity(
+            kind=kwargs["kind"],
+            symbol=kwargs["symbol"],
+            name=kwargs["name"],
+            name_en=kwargs["name_en"],
+            exchange=kwargs["exchange"],
+            industry=kwargs["industry"],
+            aliases=kwargs["aliases"],
+            themes=kwargs["themes"],
+            source=kwargs["source"],
+            confidence=kwargs["confidence"],
+        )
+
+    monkeypatch.setattr(market_data_collector, "upsert_entity", fake_upsert_entity)
+    monkeypatch.setattr(market_data_collector.settings, "market_data_discovery_enabled", True)
+
+    entity = await market_data_collector.discover_entity_from_topic(
+        object(),
+        "nvidia 전망",
+        client=FakeFinnhubClient(),
+    )
+
+    assert entity is not None
+    assert entity.kind == "stock"
+    assert entity.symbol == "NVDA"
+    assert entity.source == "finnhub"
+    assert "NVIDIA Corp" in entity.aliases
+    assert "Semiconductors" in entity.themes

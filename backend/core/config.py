@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     scheduler_jobstore_url: str | None = None
     market_data_refresh_enabled: bool = False
     market_data_refresh_interval_minutes: int = 360
+    market_data_discovery_enabled: bool = False
+    market_data_seed_symbols: str = "AAPL,MSFT,NVDA,TSLA,GOOGL,META,AMZN"
 
     @property
     def effective_jobstore_url(self) -> str:

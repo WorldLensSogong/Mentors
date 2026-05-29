@@ -1,19 +1,36 @@
 from __future__ import annotations
 
 import logging
+import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import TypedDict
+from typing import Protocol, TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.ai_pipeline.news_search import news_search
+from core.config import settings
 from core.db import transaction
 from core.exceptions import ExternalServiceError
+from core.market_data.finnhub import (
+    FinnhubCompany,
+    FinnhubCompanyProfile,
+    FinnhubNewsItem,
+    finnhub_market_data,
+)
 from core.market_data.models import MarketEntity
 from core.market_data.repository import upsert_entity, upsert_news_item
 
 logger = logging.getLogger("market_data")
+
+
+class MarketDataDiscoveryClient(Protocol):
+    async def search_companies(self, query: str, *, limit: int = 5) -> list[FinnhubCompany]: ...
+
+    async def get_company_profile(self, symbol: str) -> FinnhubCompanyProfile | None: ...
+
+    async def get_company_news(self, symbol: str, *, limit: int = 5) -> list[FinnhubNewsItem]: ...
 
 
 class SeedEntity(TypedDict, total=False):
@@ -84,6 +101,7 @@ DEFAULT_SEED_ENTITIES: tuple[SeedEntity, ...] = (
 async def refresh_market_data() -> None:
     async with transaction() as db:
         await seed_market_entities(db)
+        await refresh_external_market_entities(db)
         await refresh_tracked_entity_news(db)
 
 
@@ -103,6 +121,112 @@ async def seed_market_entities(db: AsyncSession) -> None:
             source="seed",
             confidence=90,
         )
+
+
+async def refresh_external_market_entities(
+    db: AsyncSession,
+    *,
+    client: MarketDataDiscoveryClient | None = None,
+) -> int:
+    if not settings.market_data_discovery_enabled:
+        return 0
+
+    client = client or finnhub_market_data
+    refreshed = 0
+    for symbol in _configured_seed_symbols():
+        entity = await upsert_external_stock(db, symbol, client=client)
+        if entity is not None:
+            refreshed += 1
+    return refreshed
+
+
+async def discover_entity_from_topic(
+    db: AsyncSession,
+    topic: str,
+    *,
+    client: MarketDataDiscoveryClient | None = None,
+) -> MarketEntity | None:
+    if not settings.market_data_discovery_enabled:
+        return None
+
+    client = client or finnhub_market_data
+    for query in _topic_discovery_queries(topic):
+        companies = await client.search_companies(query, limit=3)
+        for company in companies:
+            if not _is_supported_company(company):
+                continue
+            entity = await upsert_external_stock(db, company.symbol, company=company, client=client)
+            if entity is not None:
+                return entity
+    return None
+
+
+async def upsert_external_stock(
+    db: AsyncSession,
+    symbol: str,
+    *,
+    company: FinnhubCompany | None = None,
+    client: MarketDataDiscoveryClient | None = None,
+) -> MarketEntity | None:
+    client = client or finnhub_market_data
+    profile = await client.get_company_profile(symbol)
+    if profile is None:
+        return None
+
+    aliases = _unique_nonempty(
+        [
+            profile.symbol,
+            company.display_symbol if company else None,
+            company.description if company else None,
+            profile.name,
+        ]
+    )
+    themes = _unique_nonempty([profile.industry, profile.country])
+    entity = await upsert_entity(
+        db,
+        kind="stock",
+        symbol=profile.symbol,
+        name=profile.name,
+        name_en=profile.name,
+        exchange=profile.exchange,
+        sector=profile.industry,
+        industry=profile.industry,
+        aliases=aliases,
+        themes=themes,
+        source="finnhub",
+        confidence=80,
+    )
+    await refresh_entity_company_news(db, entity, client=client)
+    return entity
+
+
+async def refresh_entity_company_news(
+    db: AsyncSession,
+    entity: MarketEntity,
+    *,
+    client: MarketDataDiscoveryClient | None = None,
+) -> int:
+    if entity.kind != "stock":
+        return 0
+
+    client = client or finnhub_market_data
+    items = await client.get_company_news(entity.symbol, limit=5)
+    saved = 0
+    for item in items:
+        saved_item = await upsert_news_item(
+            db,
+            entity,
+            title=item.title,
+            source=item.source,
+            url=item.url,
+            summary=item.summary,
+            published_at=item.published_at,
+        )
+        if saved_item is not None:
+            saved += 1
+    if saved:
+        entity.last_refreshed_at = datetime.now(UTC)
+    return saved
 
 
 async def refresh_tracked_entity_news(db: AsyncSession, limit: int = 30) -> int:
@@ -135,3 +259,66 @@ def _entity_news_query(entity: MarketEntity) -> str:
     if entity.kind == "stock":
         return f"{entity.name} {entity.symbol} 실적 주가 전망"
     return f"{entity.name} 관련주 산업 전망 투자 리스크"
+
+
+def _configured_seed_symbols() -> list[str]:
+    return _unique_nonempty(settings.market_data_seed_symbols.split(","))
+
+
+def _topic_discovery_queries(topic: str) -> list[str]:
+    cleaned = re.sub(r"[^\w가-힣\s]", " ", topic)
+    stopwords = {
+        "지금",
+        "전망",
+        "투자",
+        "주식",
+        "관련주",
+        "테마주",
+        "수혜주",
+        "살까",
+        "팔까",
+        "괜찮아",
+        "괜찮나",
+        "어때",
+        "오너리스크",
+        "실적",
+        "주가",
+    }
+    candidates: list[str] = []
+    for token in cleaned.split():
+        token = _normalize_discovery_token(token)
+        if len(token) < 2 or token in stopwords:
+            continue
+        if re.fullmatch(r"[A-Z]{1,6}", token):
+            candidates.insert(0, token)
+        else:
+            candidates.append(token)
+    return _unique_nonempty(candidates[:4])
+
+
+def _normalize_discovery_token(token: str) -> str:
+    stripped = token.strip()
+    latin_prefix = re.match(r"[A-Za-z]{2,6}", stripped)
+    if latin_prefix:
+        return latin_prefix.group(0)
+    return stripped
+
+
+def _is_supported_company(company: FinnhubCompany) -> bool:
+    company_type = company.kind.lower()
+    if company_type and company_type not in {"common stock", "equity", "adr"}:
+        return False
+    return bool(company.symbol and "." not in company.symbol)
+
+
+def _unique_nonempty(values: Iterable[object]) -> list[str]:
+    result = []
+    seen = set()
+    for value in values:
+        text = str(value or "").strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+    return result

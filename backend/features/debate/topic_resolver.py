@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.market_data.collector import discover_entity_from_topic
 from core.market_data.repository import MarketEntityMatch, find_entity_match
 
 
@@ -23,7 +24,10 @@ async def resolve_with_market_data(
 ) -> DebateTopicResolution | None:
     match = await find_entity_match(db, raw_topic)
     if not match:
-        return None
+        entity = await discover_entity_from_topic(db, raw_topic)
+        if entity is None:
+            return None
+        match = MarketEntityMatch(entity=entity, matched_text=entity.name, score=100)
     return _to_resolution(raw_topic, match)
 
 
