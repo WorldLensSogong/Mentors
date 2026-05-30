@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
+from pathlib import Path
 
-from core.contracts import MentorStrategy, Tier
-from features.learning import curriculum
+from core.contracts import Tier
 
 
 @dataclass(frozen=True)
@@ -22,255 +23,58 @@ class PromotionChoice:
 @dataclass(frozen=True)
 class PromotionQuestion:
     id: str
+    concept_id: int
     prompt: str
     choices: tuple[PromotionChoice, ...]
     correct_choice_id: str
+    source_question_id: str | None = None
+    is_application: bool = False
 
 
-def _build_tier_concepts() -> dict[Tier, tuple[TierConcept, ...]]:
-    concepts_by_tier: dict[Tier, list[TierConcept]] = {tier: [] for tier in Tier}
-    for concept in curriculum.list_concepts_for_strategy(MentorStrategy.VALUE):
-        concepts_by_tier[concept.tier_required].append(
-            TierConcept(
-                int(concept.id),
-                f"value_concept_{int(concept.id)}",
-                concept.name,
-            )
-        )
-    return {tier: tuple(items) for tier, items in concepts_by_tier.items()}
+_PROMOTION_QUESTION_COUNT = 10
+_PROMOTION_REUSE_COUNT = 8
+_PROMOTION_APPLICATION_COUNT = 2
+_PROMOTION_CHOICE_IDS = ("A", "B", "C", "D")
+_PROMOTION_QUESTIONS_PATH = Path(__file__).resolve().parent / "data" / "promotion_questions.toml"
+_PROMOTION_QUESTIONS_CACHE: dict[Tier, tuple[PromotionQuestion, ...]] | None = None
+_PROMOTION_QUESTIONS_MTIME_NS: int | None = None
 
 
-_TIER_CONCEPTS = _build_tier_concepts()
-
-
-_PROMOTION_QUESTIONS: dict[Tier, tuple[PromotionQuestion, ...]] = {
+_TIER_CONCEPTS: dict[Tier, tuple[TierConcept, ...]] = {
     Tier.T1: (
-        PromotionQuestion(
-            "t1-q1",
-            "Which choice best matches a margin-of-safety mindset?",
-            (
-                PromotionChoice("A", "Wait for a price below reasonable value."),
-                PromotionChoice("B", "Buy because the chart moved quickly."),
-                PromotionChoice("C", "Follow the loudest social post."),
-                PromotionChoice("D", "Ignore business fundamentals."),
-            ),
-            "A",
-        ),
-        PromotionQuestion(
-            "t1-q2",
-            "If short-term volatility rises but the business thesis is unchanged, what fits T1?",
-            (
-                PromotionChoice("A", "Panic sell immediately."),
-                PromotionChoice("B", "Re-check the thesis before reacting."),
-                PromotionChoice("C", "Double down without review."),
-                PromotionChoice("D", "Trade every intraday swing."),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t1-q3",
-            "Intrinsic value is closest to which idea?",
-            (
-                PromotionChoice("A", "Yesterday's closing price"),
-                PromotionChoice("B", "A rumor-driven target"),
-                PromotionChoice("C", "Estimated business worth based on fundamentals"),
-                PromotionChoice("D", "The highest price on social media"),
-            ),
-            "C",
-        ),
-        PromotionQuestion(
-            "t1-q4",
-            "Which signal matters most for long-term investing?",
-            (
-                PromotionChoice("A", "Business quality and staying power"),
-                PromotionChoice("B", "One day of price momentum"),
-                PromotionChoice("C", "A trending meme"),
-                PromotionChoice("D", "A random ticker mention"),
-            ),
-            "A",
-        ),
-        PromotionQuestion(
-            "t1-q5",
-            "What is risk in the Mentors T1 context?",
-            (
-                PromotionChoice("A", "Any daily price drop"),
-                PromotionChoice("B", "Only media sentiment"),
-                PromotionChoice("C", "A temporary red candle"),
-                PromotionChoice("D", "Permanent loss from a weak thesis or business"),
-            ),
-            "D",
-        ),
+        TierConcept(101, "margin_of_safety", "안전마진"),
+        TierConcept(102, "intrinsic_value", "내재가치"),
+        TierConcept(103, "long_term_horizon", "장기투자"),
+        TierConcept(104, "volatility_vs_risk", "변동성과 위험"),
+        TierConcept(105, "business_quality", "좋은 사업"),
     ),
     Tier.T2: (
-        PromotionQuestion(
-            "t2-q1",
-            "What unlocks the debate arena in the docs?",
-            (
-                PromotionChoice("A", "Reaching T2"),
-                PromotionChoice("B", "Paying for premium"),
-                PromotionChoice("C", "Skipping onboarding"),
-                PromotionChoice("D", "Posting more chats"),
-            ),
-            "A",
-        ),
-        PromotionQuestion(
-            "t2-q2",
-            "What is the best use of a counter-argument in debate?",
-            (
-                PromotionChoice("A", "Ignore it to stay confident"),
-                PromotionChoice("B", "Use it to test your thesis"),
-                PromotionChoice("C", "Always reverse the thesis"),
-                PromotionChoice("D", "Turn it into a trade signal"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t2-q3",
-            "Healthy position sizing is closest to which behavior?",
-            (
-                PromotionChoice("A", "Put every asset into one idea"),
-                PromotionChoice("B", "Size positions with risk in mind"),
-                PromotionChoice("C", "Size by social media volume"),
-                PromotionChoice("D", "Scale only after daily gains"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t2-q4",
-            "Portfolio balance mainly helps with what?",
-            (
-                PromotionChoice("A", "Guaranteeing profits"),
-                PromotionChoice("B", "Making every idea equal"),
-                PromotionChoice("C", "Removing all uncertainty"),
-                PromotionChoice("D", "Reducing dependence on one thesis"),
-            ),
-            "D",
-        ),
-        PromotionQuestion(
-            "t2-q5",
-            "If new evidence weakens your original thesis, what fits T2 best?",
-            (
-                PromotionChoice("A", "Pretend the thesis is unchanged"),
-                PromotionChoice("B", "Review and update the thesis consistently"),
-                PromotionChoice("C", "Average down automatically"),
-                PromotionChoice("D", "Trade only by emotion"),
-            ),
-            "B",
-        ),
+        TierConcept(201, "debate_tradeoff", "장단점 비교"),
+        TierConcept(202, "counter_argument", "반대 의견 점검"),
+        TierConcept(203, "position_sizing", "비중 조절"),
+        TierConcept(204, "portfolio_balance", "포트폴리오 균형"),
+        TierConcept(205, "thesis_consistency", "투자 논리 점검"),
     ),
     Tier.T3: (
-        PromotionQuestion(
-            "t3-q1",
-            "What unlocks additional mentors in MVP?",
-            (
-                PromotionChoice("A", "T3 or above"),
-                PromotionChoice("B", "Any completed debate"),
-                PromotionChoice("C", "Three daily reports"),
-                PromotionChoice("D", "A one-time purchase"),
-            ),
-            "A",
-        ),
-        PromotionQuestion(
-            "t3-q2",
-            "Why compare multiple mentors at T3?",
-            (
-                PromotionChoice("A", "To collect random opinions"),
-                PromotionChoice("B", "To test the same thesis through different lenses"),
-                PromotionChoice("C", "To maximize daily alerts"),
-                PromotionChoice("D", "To avoid building a personal framework"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t3-q3",
-            "A sector rotation signal should be used how?",
-            (
-                PromotionChoice("A", "As the only decision input"),
-                PromotionChoice("B", "As supporting context for the thesis"),
-                PromotionChoice("C", "As a guarantee of returns"),
-                PromotionChoice("D", "Only for meme stocks"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t3-q4",
-            "Scenario mapping is most useful for what?",
-            (
-                PromotionChoice("A", "Predicting one exact future"),
-                PromotionChoice("B", "Comparing possible outcomes before acting"),
-                PromotionChoice("C", "Avoiding any written thesis"),
-                PromotionChoice("D", "Trading by reaction alone"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t3-q5",
-            "Allocation discipline at T3 means what?",
-            (
-                PromotionChoice("A", "Move all funds into the newest mentor"),
-                PromotionChoice("B", "Allocate according to conviction and risk"),
-                PromotionChoice("C", "Copy the strongest debate speaker"),
-                PromotionChoice("D", "Use the same size for every idea always"),
-            ),
-            "B",
-        ),
+        TierConcept(301, "mentor_diversity", "다양한 관점 비교"),
+        TierConcept(302, "sector_rotation", "섹터 순환"),
+        TierConcept(303, "macro_filtering", "매크로 필터"),
+        TierConcept(304, "scenario_mapping", "시나리오 설계"),
+        TierConcept(305, "allocation_discipline", "자산 배분 규율"),
     ),
     Tier.T4: (
-        PromotionQuestion(
-            "t4-q1",
-            "Rate sensitivity helps answer which question?",
-            (
-                PromotionChoice("A", "How a business reacts when rates change"),
-                PromotionChoice("B", "Which chart pattern broke first"),
-                PromotionChoice("C", "Which mentor speaks fastest"),
-                PromotionChoice("D", "Which stock is most viral"),
-            ),
-            "A",
-        ),
-        PromotionQuestion(
-            "t4-q2",
-            "A macro regime lens should do what?",
-            (
-                PromotionChoice("A", "Replace company analysis"),
-                PromotionChoice("B", "Frame how context changes thesis quality"),
-                PromotionChoice("C", "Guarantee the timing entry"),
-                PromotionChoice("D", "Ignore rates and liquidity"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t4-q3",
-            "Earnings quality matters because it shows what?",
-            (
-                PromotionChoice("A", "Only last week's momentum"),
-                PromotionChoice("B", "Whether profit quality supports the thesis"),
-                PromotionChoice("C", "How to trade headlines faster"),
-                PromotionChoice("D", "Which ticker trends more"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t4-q4",
-            "Stress testing a thesis is mainly about what?",
-            (
-                PromotionChoice("A", "Assuming best-case only"),
-                PromotionChoice("B", "Checking if the thesis survives bad scenarios"),
-                PromotionChoice("C", "Picking the most complex model"),
-                PromotionChoice("D", "Removing all uncertainty"),
-            ),
-            "B",
-        ),
-        PromotionQuestion(
-            "t4-q5",
-            "Cross-cycle judgment means what?",
-            (
-                PromotionChoice("A", "Use one fixed answer in every market"),
-                PromotionChoice("B", "Adapt the same principles across different cycles"),
-                PromotionChoice("C", "Ignore the current macro backdrop"),
-                PromotionChoice("D", "Trade every cycle as a new meme"),
-            ),
-            "B",
-        ),
+        TierConcept(401, "rate_sensitivity", "금리 민감도"),
+        TierConcept(402, "macro_regime", "매크로 국면 판단"),
+        TierConcept(403, "earnings_quality", "이익의 질"),
+        TierConcept(404, "stress_testing", "스트레스 테스트"),
+        TierConcept(405, "cross_cycle_judgment", "사이클 종합 판단"),
+    ),
+    Tier.T5: (
+        TierConcept(501, "independent_thesis", "독립적인 투자 논리"),
+        TierConcept(502, "framework_composition", "프레임워크 조합"),
+        TierConcept(503, "risk_governance", "리스크 거버넌스"),
+        TierConcept(504, "market_context_synthesis", "시장 맥락 종합"),
+        TierConcept(505, "self_directed_reflection", "자기 점검"),
     ),
 }
 
@@ -280,7 +84,7 @@ def list_concepts_for_tier(tier: Tier) -> tuple[TierConcept, ...]:
 
 
 def list_promotion_questions(tier: Tier) -> tuple[PromotionQuestion, ...]:
-    return _PROMOTION_QUESTIONS.get(tier, ())
+    return _load_promotion_questions()[tier]
 
 
 def get_concept_by_id(concept_id: int) -> TierConcept | None:
@@ -289,6 +93,185 @@ def get_concept_by_id(concept_id: int) -> TierConcept | None:
             if concept.id == concept_id:
                 return concept
     return None
+
+
+def _load_promotion_questions() -> dict[Tier, tuple[PromotionQuestion, ...]]:
+    global _PROMOTION_QUESTIONS_CACHE, _PROMOTION_QUESTIONS_MTIME_NS
+
+    mtime_ns = _PROMOTION_QUESTIONS_PATH.stat().st_mtime_ns
+    if (
+        _PROMOTION_QUESTIONS_CACHE is not None
+        and _PROMOTION_QUESTIONS_MTIME_NS == mtime_ns
+    ):
+        return _PROMOTION_QUESTIONS_CACHE
+
+    with _PROMOTION_QUESTIONS_PATH.open("rb") as file:
+        raw = tomllib.load(file)
+
+    parsed = _parse_promotion_questions(raw)
+    _PROMOTION_QUESTIONS_CACHE = parsed
+    _PROMOTION_QUESTIONS_MTIME_NS = mtime_ns
+    return parsed
+
+
+def _parse_promotion_questions(raw: object) -> dict[Tier, tuple[PromotionQuestion, ...]]:
+    if not isinstance(raw, dict):
+        raise ValueError("Promotion question TOML root must be a table.")
+
+    tiers_raw = raw.get("tiers")
+    if not isinstance(tiers_raw, dict):
+        raise ValueError("Promotion question TOML must define a [tiers] table.")
+
+    parsed: dict[Tier, tuple[PromotionQuestion, ...]] = {}
+    for tier in Tier:
+        tier_raw = tiers_raw.get(tier.value)
+        if not isinstance(tier_raw, dict):
+            raise ValueError(f"{tier.value} promotion questions must be defined.")
+
+        questions = tuple(_build_promotion_questions_for_tier(tier, tier_raw))
+        ids = [question.id for question in questions]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"{tier.value} contains duplicate question ids.")
+
+        parsed[tier] = questions
+
+    return parsed
+
+
+def _build_promotion_questions_for_tier(
+    tier: Tier,
+    tier_raw: dict[str, object],
+) -> list[PromotionQuestion]:
+    from features.learning.tier_quizzes import list_tier_quizzes
+
+    valid_concept_ids = {concept.id for concept in list_concepts_for_tier(tier)}
+    tier_quizzes = {quiz.question_id: quiz for quiz in list_tier_quizzes(tier)}
+
+    reuse_ids = tier_raw.get("reuse_question_ids")
+    if not isinstance(reuse_ids, list):
+        raise ValueError(f"{tier.value} reuse_question_ids must be provided as an array.")
+    if len(reuse_ids) != _PROMOTION_REUSE_COUNT:
+        raise ValueError(
+            f"{tier.value} must reuse exactly {_PROMOTION_REUSE_COUNT} follow-up quizzes."
+        )
+
+    questions: list[PromotionQuestion] = []
+    for raw_id in reuse_ids:
+        reuse_id = _require_non_empty_str(raw_id, f"{tier.value} reuse_question_id")
+        follow_up_quiz = tier_quizzes.get(reuse_id)
+        if follow_up_quiz is None:
+            raise ValueError(
+                f"{tier.value} reuse question {reuse_id} must exist in follow-up quizzes."
+            )
+        questions.append(_promotion_question_from_follow_up(follow_up_quiz))
+
+    application_questions_raw = tier_raw.get("applied_questions")
+    if not isinstance(application_questions_raw, list):
+        raise ValueError(f"{tier.value} applied_questions must be provided as an array.")
+    if len(application_questions_raw) != _PROMOTION_APPLICATION_COUNT:
+        raise ValueError(
+            f"{tier.value} must define exactly "
+            f"{_PROMOTION_APPLICATION_COUNT} application questions."
+        )
+
+    for index, raw_question in enumerate(application_questions_raw, start=1):
+        question = _parse_promotion_question(
+            tier=tier,
+            raw=raw_question,
+            index=index,
+            valid_concept_ids=valid_concept_ids,
+        )
+        questions.append(question)
+
+    if len(questions) != _PROMOTION_QUESTION_COUNT:
+        raise ValueError(
+            f"{tier.value} must contain exactly {_PROMOTION_QUESTION_COUNT} questions."
+        )
+
+    return questions
+
+
+def _promotion_question_from_follow_up(question: object) -> PromotionQuestion:
+    from features.learning.tier_quizzes import TierQuiz
+
+    if not isinstance(question, TierQuiz):
+        raise ValueError("Follow-up quiz must be a TierQuiz instance.")
+
+    return PromotionQuestion(
+        id=question.question_id,
+        concept_id=question.concept_id,
+        prompt=question.question,
+        choices=tuple(
+            PromotionChoice(id=choice_id, text=text)
+            for choice_id, text in zip(_PROMOTION_CHOICE_IDS, question.options, strict=True)
+        ),
+        correct_choice_id=_PROMOTION_CHOICE_IDS[question.correct_index],
+        source_question_id=question.question_id,
+        is_application=False,
+    )
+
+
+def _parse_promotion_question(
+    *,
+    tier: Tier,
+    raw: object,
+    index: int,
+    valid_concept_ids: set[int],
+) -> PromotionQuestion:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{tier.value} question #{index} must be a table.")
+
+    question_id = _require_non_empty_str(raw.get("id"), f"{tier.value} question #{index} id")
+    concept_id = _require_int(raw.get("concept_id"), f"{question_id} concept_id")
+    if concept_id not in valid_concept_ids:
+        raise ValueError(f"{question_id} concept_id must belong to {tier.value}.")
+    prompt = _require_non_empty_str(raw.get("prompt"), f"{question_id} prompt")
+    correct_choice_id = _require_non_empty_str(
+        raw.get("correct_choice_id"),
+        f"{question_id} correct_choice_id",
+    )
+    choices_raw = raw.get("choices")
+    if not isinstance(choices_raw, dict):
+        raise ValueError(f"{question_id} choices must be a table.")
+
+    choice_keys = tuple(sorted(choices_raw.keys()))
+    if choice_keys != _PROMOTION_CHOICE_IDS:
+        raise ValueError(
+            f"{question_id} choices must define exactly {_PROMOTION_CHOICE_IDS}."
+        )
+    if correct_choice_id not in choices_raw:
+        raise ValueError(f"{question_id} correct_choice_id must match one of the choices.")
+
+    choices = tuple(
+        PromotionChoice(
+            id=choice_id,
+            text=_require_non_empty_str(
+                choices_raw.get(choice_id),
+                f"{question_id} choice {choice_id}",
+            ),
+        )
+        for choice_id in _PROMOTION_CHOICE_IDS
+    )
+    return PromotionQuestion(
+        id=question_id,
+        concept_id=concept_id,
+        prompt=prompt,
+        choices=choices,
+        correct_choice_id=correct_choice_id,
+        is_application=True,
+    )
+
+
+def _require_non_empty_str(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a non-empty string.")
+    return value.strip()
+
+
+def _require_int(value: object, label: str) -> int:
+    if not isinstance(value, int):
+        raise ValueError(f"{label} must be an integer.")
+    return value
 
 
 __all__ = [

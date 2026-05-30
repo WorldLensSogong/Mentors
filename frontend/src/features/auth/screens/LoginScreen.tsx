@@ -15,7 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
-import { localLogin, getAuthApiErrorMessage } from '../api';
+import { localLogin, issueDevAccessToken, getAuthApiErrorMessage } from '../api';
 import type { AppStackParamList } from '@/navigation/types';
 
 export function LoginScreen() {
@@ -28,9 +28,18 @@ export function LoginScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  function handleDevBypass() {
-    resetOnboarding();
-    setAccessToken('mock-token-for-dev-testing');
+  async function handleDevBypass() {
+    setIsSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const response = await issueDevAccessToken();
+      resetOnboarding();
+      setAccessToken(response.access_token);
+    } catch {
+      setErrorMsg('개발자 토큰 발급에 실패했습니다. 백엔드 서버를 확인해 주세요.');
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function handleLogin() {
@@ -146,7 +155,7 @@ export function LoginScreen() {
             </View>
 
             {/* Developer Bypass Button */}
-            <Pressable onPress={handleDevBypass} style={styles.devBypassButton}>
+            <Pressable onPress={() => { void handleDevBypass(); }} style={styles.devBypassButton}>
               <Text style={styles.devBypassButtonText}>[개발자 모드] 로그인 건너뛰기</Text>
             </Pressable>
           </View>

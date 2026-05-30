@@ -1,17 +1,35 @@
 import importlib
+from collections.abc import AsyncIterator
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.auth.dependencies import get_current_user
-from core.auth.models import User
-from core.contracts import Tier
+from core.contracts import UserId
+from core.db import get_db
 from core.exceptions import register_exception_handlers
+from features.learning.tier_quizzes import get_tier_quiz
 
 
-def _fake_user() -> User:
-    return User(id=1, email="user@example.com", nickname="tester", status="active")
+class _ExplodingUser:
+    def __init__(self) -> None:
+        self._reads = 0
+
+    @property
+    def id(self) -> int:
+        self._reads += 1
+        if self._reads > 1:
+            raise RuntimeError("user.id should not be accessed twice")
+        return 1
+
+
+class _FakeDb:
+    async def commit(self) -> None:
+        return None
+
+
+async def _fake_db() -> AsyncIterator[_FakeDb]:
+    yield _FakeDb()
 
 
 def _build_app() -> FastAPI:
@@ -23,38 +41,50 @@ def _build_app() -> FastAPI:
     return app
 
 
-def test_learning_quiz_catalog_route_requires_auth() -> None:
-    with TestClient(_build_app()) as client:
-        response = client.get("/api/learning/me/quizzes")
-
-    assert response.status_code == 401
-
-
-def test_learning_quiz_catalog_route_returns_current_tier_quizzes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_submit_quiz_caches_user_id_before_late_side_effects(monkeypatch) -> None:
     learning_router = importlib.import_module("features.learning.router")
+    quiz = get_tier_quiz("t2-f5")
 
-    class _FakeGrowthReader:
-        async def get_user_tier(self, _user_id: int) -> Tier:
-            return Tier.T1
+    async def fake_submit_tier_quiz(
+        *,
+        user_id: UserId,
+        question_id: str,
+        answer_index: int,
+        db: object,
+    ) -> object:
+        assert user_id == UserId(1)
+        assert question_id == quiz.question_id
+        assert answer_index == quiz.correct_index
+        return type(
+            "Outcome",
+            (),
+            {
+                "correct": True,
+                "explanation": quiz.explanation,
+                "quiz": quiz,
+            },
+        )()
 
-    monkeypatch.setattr(
-        learning_router.growth_dep,
-        "reader",
-        lambda: _FakeGrowthReader(),
-    )
+    published_events: list[object] = []
+
+    async def fake_publish(event: object) -> None:
+        published_events.append(event)
 
     app = _build_app()
-    app.dependency_overrides[get_current_user] = _fake_user
+    app.dependency_overrides[get_current_user] = _ExplodingUser
+    app.dependency_overrides[get_db] = _fake_db
+    monkeypatch.setattr(learning_router.quizzes, "submit_tier_quiz", fake_submit_tier_quiz)
+    monkeypatch.setattr(learning_router.event_bus, "publish", fake_publish)
 
     try:
         with TestClient(app) as client:
-            response = client.get("/api/learning/me/quizzes")
+            response = client.post(
+                "/api/learning/quizzes/submit",
+                json={"question_id": quiz.question_id, "answer_index": quiz.correct_index},
+            )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["tier"] == "T1"
-    assert [item["concept_id"] for item in body["quizzes"]] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert response.json() == {"correct": True, "explanation": quiz.explanation}
+    assert len(published_events) == 1
