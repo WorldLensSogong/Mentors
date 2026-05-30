@@ -100,6 +100,12 @@ def test_topic_discovery_queries_strip_korean_particle_from_latin_name() -> None
     assert queries == ["openai"]
 
 
+def test_topic_discovery_queries_map_korean_global_stock_aliases() -> None:
+    queries = market_data_collector._topic_discovery_queries("엔비디아 전망")
+
+    assert queries[0] == "NVDA"
+
+
 def test_naver_finance_parser_extracts_korean_stock_candidates() -> None:
     payload = {
         "items": [
@@ -238,3 +244,65 @@ async def test_discover_entity_from_topic_uses_korean_stock_search_first(monkeyp
     assert entity.name == "삼성전자"
     assert entity.exchange == "KOSPI"
     assert entity.source == "naver_finance"
+
+
+@pytest.mark.asyncio
+async def test_discover_entity_from_topic_falls_back_to_global_market_for_korean_alias(
+    monkeypatch,
+) -> None:
+    class EmptyKoreanClient:
+        async def search_stocks(self, query: str, *, limit: int = 5):
+            return []
+
+    class FakeFinnhubClient:
+        async def search_companies(self, query: str, *, limit: int = 5):
+            assert query == "NVDA"
+            return [
+                market_data_finnhub.FinnhubCompany(
+                    symbol="NVDA",
+                    display_symbol="NVDA",
+                    description="NVIDIA Corp",
+                    kind="Common Stock",
+                )
+            ]
+
+        async def get_company_profile(self, symbol: str):
+            return market_data_finnhub.FinnhubCompanyProfile(
+                symbol=symbol,
+                name="NVIDIA Corp",
+                exchange="NASDAQ",
+                industry="Semiconductors",
+                country="US",
+            )
+
+        async def get_company_news(self, symbol: str, *, limit: int = 5):
+            return []
+
+    async def fake_upsert_entity(db, **kwargs):
+        return market_data_models.MarketEntity(
+            kind=kwargs["kind"],
+            symbol=kwargs["symbol"],
+            name=kwargs["name"],
+            name_en=kwargs["name_en"],
+            exchange=kwargs.get("exchange"),
+            industry=kwargs["industry"],
+            aliases=kwargs["aliases"],
+            themes=kwargs["themes"],
+            source=kwargs["source"],
+            confidence=kwargs["confidence"],
+        )
+
+    monkeypatch.setattr(market_data_collector, "upsert_entity", fake_upsert_entity)
+    monkeypatch.setattr(market_data_collector.settings, "market_data_discovery_enabled", True)
+
+    entity = await market_data_collector.discover_entity_from_topic(
+        object(),
+        "엔비디아 전망",
+        client=FakeFinnhubClient(),
+        korean_client=EmptyKoreanClient(),
+    )
+
+    assert entity is not None
+    assert entity.symbol == "NVDA"
+    assert entity.exchange == "NASDAQ"
+    assert entity.source == "finnhub"
