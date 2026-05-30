@@ -25,23 +25,21 @@ from core.market_data.repository import upsert_entity, upsert_news_item
 
 logger = logging.getLogger("market_data")
 
-GLOBAL_STOCK_ALIASES: dict[str, str] = {
-    "엔비디아": "NVDA",
-    "애플": "AAPL",
-    "마이크로소프트": "MSFT",
-    "구글": "GOOGL",
-    "알파벳": "GOOGL",
-    "메타": "META",
-    "페이스북": "META",
-    "아마존": "AMZN",
-    "테슬라": "TSLA",
-    "넷플릭스": "NFLX",
-    "팔란티어": "PLTR",
-    "브로드컴": "AVGO",
-    "일라이릴리": "LLY",
-    "코카콜라": "KO",
-    "맥도날드": "MCD",
-    "버거킹": "QSR",
+GLOBAL_STOCK_KOREAN_ALIASES: dict[str, tuple[str, ...]] = {
+    "NVDA": ("엔비디아",),
+    "AAPL": ("애플",),
+    "MSFT": ("마이크로소프트",),
+    "GOOGL": ("구글", "알파벳"),
+    "META": ("메타", "페이스북"),
+    "AMZN": ("아마존",),
+    "TSLA": ("테슬라",),
+    "NFLX": ("넷플릭스",),
+    "PLTR": ("팔란티어",),
+    "AVGO": ("브로드컴",),
+    "LLY": ("일라이릴리",),
+    "KO": ("코카콜라",),
+    "MCD": ("맥도날드",),
+    "QSR": ("버거킹",),
 }
 
 
@@ -237,6 +235,7 @@ async def upsert_external_stock(
             company.display_symbol if company else None,
             company.description if company else None,
             profile.name,
+            *GLOBAL_STOCK_KOREAN_ALIASES.get(profile.symbol, ()),
         ]
     )
     themes = _unique_nonempty([profile.industry, profile.country])
@@ -371,10 +370,6 @@ def _topic_discovery_queries(topic: str) -> list[str]:
         "주가",
     }
     candidates: list[str] = []
-    compact = cleaned.replace(" ", "").lower()
-    for alias, symbol in GLOBAL_STOCK_ALIASES.items():
-        if alias in compact:
-            candidates.append(symbol)
     for token in cleaned.split():
         token = _normalize_discovery_token(token)
         if len(token) < 2 or token in stopwords:
