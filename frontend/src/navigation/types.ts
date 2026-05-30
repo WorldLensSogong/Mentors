@@ -3,6 +3,7 @@ export type AppStackParamList = {
   Signup: undefined;
   Onboarding: undefined;
   Search: undefined;
+  DebateArena: undefined;
   NewsDetail: {
     newsId: number;
     title: string;
