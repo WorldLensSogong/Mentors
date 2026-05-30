@@ -20,6 +20,7 @@ from core.market_data.finnhub import (
     finnhub_market_data,
 )
 from core.market_data.models import MarketEntity
+from core.market_data.naver_finance import NaverFinanceStock, naver_finance_market_data
 from core.market_data.repository import upsert_entity, upsert_news_item
 
 logger = logging.getLogger("market_data")
@@ -31,6 +32,10 @@ class MarketDataDiscoveryClient(Protocol):
     async def get_company_profile(self, symbol: str) -> FinnhubCompanyProfile | None: ...
 
     async def get_company_news(self, symbol: str, *, limit: int = 5) -> list[FinnhubNewsItem]: ...
+
+
+class KoreanMarketDataDiscoveryClient(Protocol):
+    async def search_stocks(self, query: str, *, limit: int = 5) -> list[NaverFinanceStock]: ...
 
 
 class SeedEntity(TypedDict, total=False):
@@ -127,12 +132,20 @@ async def refresh_external_market_entities(
     db: AsyncSession,
     *,
     client: MarketDataDiscoveryClient | None = None,
+    korean_client: KoreanMarketDataDiscoveryClient | None = None,
 ) -> int:
     if not settings.market_data_discovery_enabled:
         return 0
 
     client = client or finnhub_market_data
+    korean_client = korean_client or naver_finance_market_data
     refreshed = 0
+    for query in _configured_seed_korean_queries():
+        stocks = await korean_client.search_stocks(query, limit=1)
+        for stock in stocks:
+            entity = await upsert_korean_stock(db, stock)
+            if entity is not None:
+                refreshed += 1
     for symbol in _configured_seed_symbols():
         entity = await upsert_external_stock(db, symbol, client=client)
         if entity is not None:
@@ -145,12 +158,20 @@ async def discover_entity_from_topic(
     topic: str,
     *,
     client: MarketDataDiscoveryClient | None = None,
+    korean_client: KoreanMarketDataDiscoveryClient | None = None,
 ) -> MarketEntity | None:
     if not settings.market_data_discovery_enabled:
         return None
 
     client = client or finnhub_market_data
+    korean_client = korean_client or naver_finance_market_data
     for query in _topic_discovery_queries(topic):
+        korean_stocks = await korean_client.search_stocks(query, limit=3)
+        for stock in korean_stocks:
+            entity = await upsert_korean_stock(db, stock)
+            if entity is not None:
+                return entity
+
         companies = await client.search_companies(query, limit=3)
         for company in companies:
             if not _is_supported_company(company):
@@ -159,6 +180,24 @@ async def discover_entity_from_topic(
             if entity is not None:
                 return entity
     return None
+
+
+async def upsert_korean_stock(db: AsyncSession, stock: NaverFinanceStock) -> MarketEntity | None:
+    aliases = _unique_nonempty([stock.name, stock.code])
+    themes = _unique_nonempty(["국내주식", stock.market])
+    return await upsert_entity(
+        db,
+        kind="stock",
+        symbol=stock.code,
+        name=stock.name,
+        name_en=stock.name,
+        exchange=stock.market,
+        sector=stock.market,
+        aliases=aliases,
+        themes=themes,
+        source="naver_finance",
+        confidence=85,
+    )
 
 
 async def upsert_external_stock(
@@ -287,6 +326,10 @@ def _entity_news_query(entity: MarketEntity) -> str:
 
 def _configured_seed_symbols() -> list[str]:
     return _unique_nonempty(settings.market_data_seed_symbols.split(","))
+
+
+def _configured_seed_korean_queries() -> list[str]:
+    return _unique_nonempty(settings.market_data_seed_korean_queries.split(","))
 
 
 def _topic_discovery_queries(topic: str) -> list[str]:

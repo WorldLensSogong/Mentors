@@ -7,6 +7,7 @@ debate_topic_resolver = importlib.import_module("features.debate.topic_resolver"
 market_data_collector = importlib.import_module("core.market_data.collector")
 market_data_finnhub = importlib.import_module("core.market_data.finnhub")
 market_data_models = importlib.import_module("core.market_data.models")
+market_data_naver_finance = importlib.import_module("core.market_data.naver_finance")
 market_data_repository = importlib.import_module("core.market_data.repository")
 
 
@@ -99,6 +100,24 @@ def test_topic_discovery_queries_strip_korean_particle_from_latin_name() -> None
     assert queries == ["openai"]
 
 
+def test_naver_finance_parser_extracts_korean_stock_candidates() -> None:
+    payload = {
+        "items": [
+            [
+                ["삼성전자", "005930", "KOSPI"],
+                {"name": "삼성전자우", "code": "005935", "market": "KOSPI"},
+            ]
+        ]
+    }
+
+    stocks = market_data_naver_finance._parse_stocks(payload)
+
+    assert stocks[0].code == "005930"
+    assert stocks[0].name == "삼성전자"
+    assert stocks[0].market == "KOSPI"
+    assert stocks[1].code == "005935"
+
+
 @pytest.mark.asyncio
 async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) -> None:
     upsert_calls = []
@@ -164,3 +183,58 @@ async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) ->
         and call["source"] == "finnhub_profile"
         for call in upsert_calls
     )
+
+
+@pytest.mark.asyncio
+async def test_discover_entity_from_topic_uses_korean_stock_search_first(monkeypatch) -> None:
+    class FakeKoreanClient:
+        async def search_stocks(self, query: str, *, limit: int = 5):
+            assert query == "삼성전자"
+            return [
+                market_data_naver_finance.NaverFinanceStock(
+                    code="005930",
+                    name="삼성전자",
+                    market="KOSPI",
+                )
+            ]
+
+    class FakeFinnhubClient:
+        async def search_companies(self, query: str, *, limit: int = 5):
+            raise AssertionError("Finnhub should not be called when Korean search matches")
+
+        async def get_company_profile(self, symbol: str):
+            raise AssertionError("Finnhub should not be called when Korean search matches")
+
+        async def get_company_news(self, symbol: str, *, limit: int = 5):
+            raise AssertionError("Finnhub should not be called when Korean search matches")
+
+    async def fake_upsert_entity(db, **kwargs):
+        return market_data_models.MarketEntity(
+            kind=kwargs["kind"],
+            symbol=kwargs["symbol"],
+            name=kwargs["name"],
+            name_en=kwargs["name_en"],
+            exchange=kwargs.get("exchange"),
+            sector=kwargs.get("sector"),
+            aliases=kwargs["aliases"],
+            themes=kwargs["themes"],
+            source=kwargs["source"],
+            confidence=kwargs["confidence"],
+        )
+
+    monkeypatch.setattr(market_data_collector, "upsert_entity", fake_upsert_entity)
+    monkeypatch.setattr(market_data_collector.settings, "market_data_discovery_enabled", True)
+
+    entity = await market_data_collector.discover_entity_from_topic(
+        object(),
+        "삼성전자 전망",
+        client=FakeFinnhubClient(),
+        korean_client=FakeKoreanClient(),
+    )
+
+    assert entity is not None
+    assert entity.kind == "stock"
+    assert entity.symbol == "005930"
+    assert entity.name == "삼성전자"
+    assert entity.exchange == "KOSPI"
+    assert entity.source == "naver_finance"

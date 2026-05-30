@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     market_data_refresh_interval_minutes: int = 360
     market_data_discovery_enabled: bool = False
     market_data_seed_symbols: str = "AAPL,MSFT,NVDA,TSLA,GOOGL,META,AMZN"
+    market_data_seed_korean_queries: str = "삼성전자,SK하이닉스,현대차,네이버,카카오"
 
     @property
     def effective_jobstore_url(self) -> str:
