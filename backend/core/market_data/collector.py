@@ -25,6 +25,8 @@ from core.market_data.repository import upsert_entity, upsert_news_item
 
 logger = logging.getLogger("market_data")
 
+GENERIC_DISCOVERY_TOKENS = {"AI", "ETF", "CPI", "FOMC", "BTC", "ETH"}
+
 GLOBAL_STOCK_KOREAN_ALIASES: dict[str, tuple[str, ...]] = {
     "NVDA": ("엔비디아",),
     "AAPL": ("애플",),
@@ -183,19 +185,24 @@ async def discover_entity_from_topic(
     client = client or finnhub_market_data
     korean_client = korean_client or naver_finance_market_data
     for query in _topic_discovery_queries(topic):
-        korean_stocks = await korean_client.search_stocks(query, limit=3)
-        for stock in korean_stocks:
-            entity = await upsert_korean_stock(db, stock)
-            if entity is not None:
-                return entity
+        scope = _discovery_query_scope(query)
+        if scope in {"korean", "mixed"}:
+            korean_stocks = await korean_client.search_stocks(query, limit=3)
+            for stock in korean_stocks:
+                entity = await upsert_korean_stock(db, stock)
+                if entity is not None:
+                    return entity
 
-        companies = await client.search_companies(query, limit=3)
-        for company in companies:
-            if not _is_supported_company(company):
-                continue
-            entity = await upsert_external_stock(db, company.symbol, company=company, client=client)
-            if entity is not None:
-                return entity
+        if scope in {"global", "mixed"}:
+            companies = await client.search_companies(query, limit=3)
+            for company in companies:
+                if not _is_supported_company(company):
+                    continue
+                entity = await upsert_external_stock(
+                    db, company.symbol, company=company, client=client
+                )
+                if entity is not None:
+                    return entity
     return None
 
 
@@ -372,7 +379,7 @@ def _topic_discovery_queries(topic: str) -> list[str]:
     candidates: list[str] = []
     for token in cleaned.split():
         token = _normalize_discovery_token(token)
-        if len(token) < 2 or token in stopwords:
+        if len(token) < 2 or token in stopwords or token.upper() in GENERIC_DISCOVERY_TOKENS:
             continue
         if re.fullmatch(r"[A-Z]{1,6}", token):
             candidates.insert(0, token)
@@ -387,6 +394,16 @@ def _normalize_discovery_token(token: str) -> str:
     if latin_prefix:
         return latin_prefix.group(0)
     return stripped
+
+
+def _discovery_query_scope(query: str) -> str:
+    has_korean = bool(re.search(r"[가-힣]", query))
+    has_global = bool(re.search(r"[A-Za-z0-9]", query))
+    if has_korean and has_global:
+        return "mixed"
+    if has_korean:
+        return "korean"
+    return "global" if has_global else "korean"
 
 
 def _industry_theme_symbol(industry: str) -> str:

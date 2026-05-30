@@ -1,5 +1,7 @@
 import importlib
 
+import pytest
+
 debate_router = importlib.import_module("features.debate.router")
 debate_topic_resolver = importlib.import_module("features.debate.topic_resolver")
 market_data_collector = importlib.import_module("core.market_data.collector")
@@ -105,6 +107,18 @@ def test_topic_discovery_queries_do_not_use_aliases_as_api_search_terms() -> Non
     assert queries == ["엔비디아"]
 
 
+def test_topic_discovery_queries_skip_broad_theme_tokens() -> None:
+    queries = market_data_collector._topic_discovery_queries("AI 전망")
+
+    assert queries == []
+
+
+def test_discovery_query_scope_routes_by_language() -> None:
+    assert market_data_collector._discovery_query_scope("삼성전자") == "korean"
+    assert market_data_collector._discovery_query_scope("nvidia") == "global"
+    assert market_data_collector._discovery_query_scope("삼성전자005930") == "mixed"
+
+
 def test_global_stock_korean_aliases_are_matchable_after_cache_seed() -> None:
     entity = market_data_models.MarketEntity(
         kind="stock",
@@ -137,6 +151,8 @@ def test_naver_finance_parser_extracts_korean_stock_candidates() -> None:
     assert stocks[0].market == "KOSPI"
     assert stocks[1].code == "005935"
 
+
+@pytest.mark.asyncio
 async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) -> None:
     upsert_calls = []
 
@@ -204,6 +220,7 @@ async def test_discover_entity_from_topic_upserts_external_stock(monkeypatch) ->
     )
 
 
+@pytest.mark.asyncio
 async def test_discover_entity_from_topic_uses_korean_stock_search_first(monkeypatch) -> None:
     class FakeKoreanClient:
         async def search_stocks(self, query: str, *, limit: int = 5):
