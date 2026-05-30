@@ -134,6 +134,33 @@ def test_global_stock_korean_aliases_are_matchable_after_cache_seed() -> None:
     assert match.entity.symbol == "NVDA"
 
 
+@pytest.mark.asyncio
+async def test_find_entity_match_searches_json_alias_candidates_without_fallback_scan() -> None:
+    class EmptyResult:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+    class FakeSession:
+        def __init__(self):
+            self.statements = []
+
+        async def execute(self, statement):
+            self.statements.append(str(statement))
+            return EmptyResult()
+
+    db = FakeSession()
+
+    match = await market_data_repository.find_entity_match(db, "엔비디아 전망")
+
+    assert match is None
+    assert len(db.statements) == 1
+    assert "aliases" in db.statements[0]
+    assert "themes" in db.statements[0]
+
+
 def test_naver_finance_parser_extracts_korean_stock_candidates() -> None:
     payload = {
         "items": [
