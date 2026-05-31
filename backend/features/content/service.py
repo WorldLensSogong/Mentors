@@ -253,7 +253,12 @@ class ContentService:
                 continue
 
             # 풀 본문 + 대표 이미지 재추출 (실패 시 raw fallback)
-            extracted_body, extracted_image = await content_extractor.extract(raw.url)
+            # NOTE: extract()는 (body, image, resolved_url) 3-tuple을 반환함. 현재 dedup이
+            # raw.url 기준 canonical로 이미 끝난 시점이라 resolved_url(Google News interstitial
+            # 해소 후 publisher URL)을 활용하려면 dedup 흐름 재구성이 필요. 그건 별도 PR에서.
+            extracted_body, extracted_image, _resolved_url = await content_extractor.extract(
+                raw.url
+            )
             content = extracted_body or raw.content
             image_url = extracted_image or raw.image_url
 
