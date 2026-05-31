@@ -225,15 +225,61 @@ class UserKeywordListResponse(BaseModel):
     total: int
 
 
+# ---------------------------------------------------------------------------
+# RSS 직접 수집 결과 (파이프라인 불필요 — 실시간 외부 피드)
+# ---------------------------------------------------------------------------
+
+
+class RssNewsItem(BaseModel):
+    """Google News RSS에서 직접 가져온 뉴스 아이템. DB 저장 없음."""
+
+    title: str
+    url: str
+    source_name: str | None = None
+    published_at: str | None = None   # ISO-8601 문자열
+    summary: str | None = None        # RSS description (HTML 포함 가능)
+    keywords: list[str] = Field(default_factory=list)  # 제목에서 추출한 키워드
+
+
+# ---------------------------------------------------------------------------
+# URL 기반 즉석 AI 요약 — /api/content/news/summarize-url
+# ---------------------------------------------------------------------------
+
+
+class UrlSummarizeRequest(BaseModel):
+    """RSS 기사 URL 즉석 요약 요청."""
+
+    url: str
+    title: str | None = None   # RSS에서 이미 알고 있는 제목 (hint)
+
+
+class UrlSummarizeResponse(BaseModel):
+    """LLM이 생성한 요약 + 본문에서 추출한 이미지 + AI 분석 결과."""
+
+    title: str
+    ai_summary: str            # LLM 생성 한국어 요약
+    image_url: str | None      # 기사 페이지에서 추출한 og:image 등
+    original_url: str
+    # AI 분석 필드 (LLM JSON 응답에서 파싱)
+    sentiment: str | None = None             # positive | neutral | negative
+    investment_relevance: str | None = None  # high | medium | low
+    strategies: list[str] = Field(default_factory=list)   # value, growth, dividend, momentum
+    keywords: list[str] = Field(default_factory=list)     # 핵심 키워드 (한국어)
+    reliability_score: int | None = None     # 0~100
+
+
 __all__ = [
     "AIProcessingResult",
     "ArticleRaw",
     "NewsArticleResponse",
     "NewsListResponse",
+    "RssNewsItem",
     "ScrapCreateRequest",
     "ScrapResponse",
     "SearchHit",
     "SearchResponse",
+    "UrlSummarizeRequest",
+    "UrlSummarizeResponse",
     "UserKeywordCreateRequest",
     "UserKeywordListResponse",
     "UserKeywordResponse",

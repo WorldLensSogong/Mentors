@@ -116,11 +116,11 @@ def get_next_unlock_codes(tier: Tier) -> list[str]:
 def grade_promotion_test(current_tier: Tier, answers: dict[str, str]) -> PromotionTestGrade:
     questions = list_promotion_questions(current_tier)
     if not questions or current_tier.next is None:
-        raise ValueError("Promotion test is not available for the current tier.")
+        raise ValueError("현재 티어에서는 승급시험을 응시할 수 없습니다.")
 
     expected_ids = {question.id for question in questions}
     if set(answers) != expected_ids:
-        raise ValueError("A complete answer set is required.")
+        raise ValueError("모든 문제에 대한 답변이 필요합니다.")
 
     correct = sum(
         1 for question in questions if answers.get(question.id) == question.correct_choice_id
@@ -174,13 +174,13 @@ async def submit_promotion_test(
     snapshot = compute_progress(current_tier, mastered_ids)
 
     if current_tier.next is None:
-        raise BadRequestError("You are already at the maximum tier.")
+        raise BadRequestError("이미 최고 티어입니다.")
     if not snapshot.eligible_for_promotion:
-        raise BadRequestError("Promotion test is not available yet.")
+        raise BadRequestError("아직 승급시험 응시 조건을 충족하지 못했습니다.")
 
     answers = {answer.question_id: answer.choice_id for answer in payload.answers}
     if len(answers) != len(payload.answers):
-        raise BadRequestError("Duplicate question answers are not allowed.")
+        raise BadRequestError("중복된 문제에 대한 답변은 허용되지 않습니다.")
 
     try:
         grade = grade_promotion_test(current_tier, answers)
@@ -235,9 +235,9 @@ async def submit_promotion_test(
         total_questions=grade.total_questions,
         unlocked_features=get_unlocked_feature_codes(current_tier),
         message=(
-            "Promotion test passed."
+            "승급시험을 통과했습니다."
             if grade.passed
-            else "Promotion test not passed. You can retry immediately."
+            else "승급시험을 통과하지 못했습니다. 바로 재응시할 수 있습니다."
         ),
     )
 

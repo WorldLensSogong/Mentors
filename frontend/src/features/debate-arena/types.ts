@@ -94,3 +94,40 @@ export interface DebateTurnMessage {
   content: string;
   isDone: boolean;
 }
+
+export interface DebateSessionSummary {
+  id: number;
+  topic: string;
+  status: string;
+  persona_a_id: string;
+  persona_a_name: string;
+  persona_b_id: string;
+  persona_b_name: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface DebateSessionListResponse {
+  sessions: DebateSessionSummary[];
+}
+
+export interface DebateMessageDetail {
+  turn_index: number;
+  speaker_id: string;
+  speaker_name: string;
+  turn_type: string;
+  content: string;
+}
+
+export interface DebateSessionDetail {
+  id: number;
+  topic: string;
+  status: string;
+  persona_a_id: string;
+  persona_a_name: string;
+  persona_b_id: string;
+  persona_b_name: string;
+  created_at: string;
+  completed_at: string | null;
+  messages: DebateMessageDetail[];
+}

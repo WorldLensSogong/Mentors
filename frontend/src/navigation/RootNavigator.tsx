@@ -11,9 +11,20 @@ import { useUserStore } from '@/store/userStore';
 import { LoginScreen } from '../features/auth/screens/LoginScreen';
 import { SignupScreen } from '../features/auth/screens/SignupScreen';
 import { OnboardingScreen } from '../features/onboarding/screens/OnboardingScreen';
-import { SearchScreen } from '../features/explore/screens/SearchScreen';
 import { NewsDetailScreen } from '../features/explore/screens/NewsDetailScreen';
-import { DebateArenaScreen } from '../features/debate-arena/screens/DebateArenaScreen';
+import { LearningRecordScreen } from '../features/growth/screens/LearningRecordScreen';
+import { PromotionTestScreen } from '../features/growth/screens/PromotionTestScreen';
+import { PromotionResultScreen } from '../features/growth/screens/PromotionResultScreen';
+import { ChatHistoryScreen } from '../features/chat/screens/ChatHistoryScreen';
+import { DebateHistoryScreen } from '../features/debate-arena/screens/DebateHistoryScreen';
+import { DebateSessionDetailScreen } from '../features/debate-arena/screens/DebateSessionDetailScreen';
+import { SearchResultScreen } from '../features/explore/screens/SearchResultScreen';
+import { RssArticleSummaryScreen } from '../features/explore/screens/RssArticleSummaryScreen';
+import { InterestSettingsScreen } from '../features/settings/screens/InterestSettingsScreen';
+import { SettingsScreen } from '../features/settings/screens/SettingsScreen';
+import { NotificationSettingsScreen } from '../features/settings/screens/NotificationSettingsScreen';
+import { AccountSettingsScreen } from '../features/settings/screens/AccountSettingsScreen';
+import { MainTabNavigator } from './MainTabNavigator';
 import type { AppStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -36,10 +47,7 @@ export function RootNavigator() {
     setIsCheckingOnboarding(true);
     getOnboardingStatus()
       .then((status) => {
-        if (ignore) {
-          return;
-        }
-
+        if (ignore) return;
         if (status.onboarded) {
           finishOnboarding({
             profile: toCompletedOnboardingProfile(status),
@@ -47,18 +55,13 @@ export function RootNavigator() {
           });
           return;
         }
-
         resetOnboarding();
       })
       .catch(() => {
-        if (!ignore) {
-          resetOnboarding();
-        }
+        if (!ignore) resetOnboarding();
       })
       .finally(() => {
-        if (!ignore) {
-          setIsCheckingOnboarding(false);
-        }
+        if (!ignore) setIsCheckingOnboarding(false);
       });
 
     return () => {
@@ -81,9 +84,20 @@ export function RootNavigator() {
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       ) : (
         <>
-          <Stack.Screen name="Search" component={SearchScreen} />
-          <Stack.Screen name="DebateArena" component={DebateArenaScreen} />
+          <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+          <Stack.Screen name="LearningRecord" component={LearningRecordScreen} />
           <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />
+          <Stack.Screen name="PromotionTest" component={PromotionTestScreen} />
+          <Stack.Screen name="PromotionResult" component={PromotionResultScreen} />
+          <Stack.Screen name="ChatHistory" component={ChatHistoryScreen} />
+          <Stack.Screen name="DebateHistory" component={DebateHistoryScreen} />
+          <Stack.Screen name="DebateSessionDetail" component={DebateSessionDetailScreen} />
+          <Stack.Screen name="SearchResult" component={SearchResultScreen} />
+          <Stack.Screen name="RssArticleSummary" component={RssArticleSummaryScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
+          <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
+          <Stack.Screen name="InterestSettings" component={InterestSettingsScreen} />
         </>
       )}
     </Stack.Navigator>
@@ -93,10 +107,7 @@ export function RootNavigator() {
 function toCompletedOnboardingProfile(
   status: OnboardingStatusResponse,
 ): CompletedOnboardingProfile | null {
-  if (!status.profile || !status.completed_at) {
-    return null;
-  }
-
+  if (!status.profile || !status.completed_at) return null;
   return {
     completedAt: status.completed_at,
     experienceLevel: status.profile.experience_level,

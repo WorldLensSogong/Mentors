@@ -27,6 +27,7 @@ from core.jobs import scheduler, start_scheduler, stop_scheduler
 from core.llm import Message, llm
 from core.logging import setup_logging
 from core.market_data.jobs import register_market_data_jobs
+from core.market_data.router import router as market_router
 from core.middlewares import LoggingMiddleware, RequestIdMiddleware
 from core.push import push
 from core.push import router as push_router
@@ -87,6 +88,7 @@ app.include_router(growth_router)
 app.include_router(debate_router)
 app.include_router(content_router)
 app.include_router(daily_report_router)
+app.include_router(market_router)
 
 # dev 전용 smoke client mount — http://127.0.0.1:8000/_smoke/ 에서 같은 origin으로 접속.
 # CORS 회피 + 토큰 발급 흐름 한 페이지에서 시각적으로 검증.

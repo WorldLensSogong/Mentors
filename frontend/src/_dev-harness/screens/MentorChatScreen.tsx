@@ -540,13 +540,13 @@ export function MentorChatScreen() {
               <Text style={styles.quizMeta}>{followUpQuiz.concept_name} 개념 확인</Text>
 
               <View style={styles.quizOptionColumn}>
-                {followUpQuiz.options.map((option, index) => {
-                  const selected = selectedQuizOptionIndex === index;
+                {followUpQuiz.options.map((option) => {
+                  const selected = selectedQuizOptionIndex === option.index;
                   return (
                     <Pressable
-                      key={`${followUpQuiz.concept_id}-${index}`}
+                      key={`${followUpQuiz.concept_id}-${option.index}`}
                       onPress={() => {
-                        setSelectedQuizOptionIndex(index);
+                        setSelectedQuizOptionIndex(option.index);
                         setQuizErrorMessage(null);
                       }}
                       style={({ pressed }) => [
@@ -558,12 +558,12 @@ export function MentorChatScreen() {
                       <Text
                         style={[styles.quizOptionIndex, selected && styles.quizOptionIndexSelected]}
                       >
-                        {index + 1}
+                        {option.index + 1}
                       </Text>
                       <Text
                         style={[styles.quizOptionText, selected && styles.quizOptionTextSelected]}
                       >
-                        {option}
+                        {option.text}
                       </Text>
                     </Pressable>
                   );

@@ -16,9 +16,9 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -82,6 +82,43 @@ class DebateEligibilityResponse(BaseModel):
     reason: str | None = None
 
 
+class DebateSessionListItem(BaseModel):
+    id: int
+    topic: str
+    status: str
+    persona_a_id: str
+    persona_a_name: str
+    persona_b_id: str
+    persona_b_name: str
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class DebateSessionListResponse(BaseModel):
+    sessions: list[DebateSessionListItem]
+
+
+class DebateMessageResponse(BaseModel):
+    turn_index: int
+    speaker_id: str
+    speaker_name: str
+    turn_type: str
+    content: str
+
+
+class DebateSessionDetailResponse(BaseModel):
+    id: int
+    topic: str
+    status: str
+    persona_a_id: str
+    persona_a_name: str
+    persona_b_id: str
+    persona_b_name: str
+    created_at: datetime
+    completed_at: datetime | None = None
+    messages: list[DebateMessageResponse]
+
+
 async def _ensure_debate_allowed(user_id: UserId) -> Tier:
     tier = await user_context.get_tier(user_id)
     if tier == Tier.T1:
@@ -100,6 +137,75 @@ async def eligibility(user: User = Depends(get_current_user)) -> DebateEligibili
             reason="투기장은 T2부터 활성화됩니다 (BR-01)",
         )
     return DebateEligibilityResponse(allowed=True, tier=tier.value)
+
+
+@router.get("/sessions", response_model=DebateSessionListResponse)
+async def list_my_debate_sessions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(30, ge=1, le=50),
+) -> DebateSessionListResponse:
+    """완료된 투기장 세션 목록."""
+    result = await db.execute(
+        select(DebateSession)
+        .where(DebateSession.user_id == user.id, DebateSession.status == "completed")
+        .order_by(desc(DebateSession.created_at))
+        .limit(limit)
+    )
+    sessions = result.scalars().all()
+    return DebateSessionListResponse(
+        sessions=[
+            DebateSessionListItem(
+                id=s.id,
+                topic=s.topic,
+                status=s.status,
+                persona_a_id=s.persona_a_id,
+                persona_a_name=get_persona(s.persona_a_id).name,
+                persona_b_id=s.persona_b_id,
+                persona_b_name=get_persona(s.persona_b_id).name,
+                created_at=s.created_at,
+                completed_at=s.completed_at,
+            )
+            for s in sessions
+        ]
+    )
+
+
+@router.get("/sessions/{debate_session_id}/detail", response_model=DebateSessionDetailResponse)
+async def get_debate_session_detail(
+    debate_session_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DebateSessionDetailResponse:
+    """완료된 투기장 세션 상세 (메시지 포함)."""
+    session = await _get_session(db, debate_session_id, user.id)
+    result = await db.execute(
+        select(DebateMessage)
+        .where(DebateMessage.debate_session_id == session.id)
+        .order_by(DebateMessage.turn_index)
+    )
+    messages = result.scalars().all()
+    return DebateSessionDetailResponse(
+        id=session.id,
+        topic=session.topic,
+        status=session.status,
+        persona_a_id=session.persona_a_id,
+        persona_a_name=get_persona(session.persona_a_id).name,
+        persona_b_id=session.persona_b_id,
+        persona_b_name=get_persona(session.persona_b_id).name,
+        created_at=session.created_at,
+        completed_at=session.completed_at,
+        messages=[
+            DebateMessageResponse(
+                turn_index=m.turn_index,
+                speaker_id=m.speaker_id,
+                speaker_name=get_persona(m.speaker_id).name,
+                turn_type=m.turn_type,
+                content=m.content,
+            )
+            for m in messages
+        ],
+    )
 
 
 @router.get("/personas")

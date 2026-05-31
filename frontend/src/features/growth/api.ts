@@ -1,6 +1,11 @@
 import { isAxiosError } from 'axios';
 import { apiClient } from '@/api/client';
-import type { GrowthProgressResponse, PromotionTestRequest, PromotionTestResponse } from './types';
+import type {
+  GrowthProgressResponse,
+  PromotionAttemptDetail,
+  PromotionTestRequest,
+  PromotionTestResponse,
+} from './types';
 
 export async function getGrowthProgress(): Promise<GrowthProgressResponse> {
   const response = await apiClient.get<GrowthProgressResponse>('/api/growth/me/progress');
@@ -14,6 +19,11 @@ export async function submitPromotionTest(
     '/api/growth/promotion-test',
     payload,
   );
+  return response.data;
+}
+
+export async function getPromotionHistory(): Promise<PromotionAttemptDetail[]> {
+  const response = await apiClient.get<PromotionAttemptDetail[]>('/api/growth/me/promotion-history');
   return response.data;
 }
 

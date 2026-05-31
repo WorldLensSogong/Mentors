@@ -21,7 +21,7 @@ import {
   goalOptions,
   scaleOptions,
   riskOptions,
-  interestCategories,
+  simpleInterestOptions,
   mapGoalToBackend,
 } from '../data/surveyData';
 
@@ -171,7 +171,6 @@ export function OnboardingScreen() {
   const [selectedScale, setSelectedScale] = useState<string | null>(null);
   const [selectedRisk, setSelectedRisk] = useState<string | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [customInterest, setCustomInterest] = useState('');
 
   // Results State
   const [recommendedMentors, setRecommendedMentors] = useState<MentorRecommendation[]>([]);
@@ -212,55 +211,12 @@ export function OnboardingScreen() {
     }
   }
 
-  // Hierarchical interest selection helpers
-  function isCategoryAllSelected(categoryName: string): boolean {
-    const category = interestCategories.find((c) => c.name === categoryName);
-    if (!category || category.children.length === 0) {
-      return selectedInterests.includes(categoryName);
-    }
-    return category.children.every((child) => selectedInterests.includes(child));
-  }
-
-  function toggleParentCategory(categoryName: string) {
-    const category = interestCategories.find((c) => c.name === categoryName);
-    if (!category) return;
-
-    if (category.children.length === 0) {
-      // If it's a category with no sub-categories, toggle the parent directly
-      if (selectedInterests.includes(categoryName)) {
-        setSelectedInterests(selectedInterests.filter((x) => x !== categoryName));
-      } else {
-        setSelectedInterests([...selectedInterests, categoryName]);
-      }
-      return;
-    }
-
-    const allSelected = isCategoryAllSelected(categoryName);
-    if (allSelected) {
-      // Remove all children
-      setSelectedInterests(selectedInterests.filter((x) => !category.children.includes(x)));
-    } else {
-      // Add all children (prevent duplicates)
-      const toAdd = category.children.filter((x) => !selectedInterests.includes(x));
-      setSelectedInterests([...selectedInterests, ...toAdd]);
-    }
-  }
-
   function toggleChildInterest(interest: string) {
     if (selectedInterests.includes(interest)) {
       setSelectedInterests(selectedInterests.filter((x) => x !== interest));
     } else {
       setSelectedInterests([...selectedInterests, interest]);
     }
-  }
-
-  function handleAddCustomInterest() {
-    const val = customInterest.trim();
-    if (!val) return;
-    if (!selectedInterests.includes(val)) {
-      setSelectedInterests([...selectedInterests, val]);
-    }
-    setCustomInterest('');
   }
 
   async function handleNextStep() {
@@ -288,20 +244,8 @@ export function OnboardingScreen() {
     // Map goals to one of the backend tags
     const mappedGoal = mapGoalToBackend(selectedGoals);
 
-    // Map selected sub-categories to their backend interest tags
-    const mappedBackendTags: string[] = [];
-    selectedInterests.forEach((interest) => {
-      // Try to find if this belongs to a parent category backend tag
-      const matchedCategory = interestCategories.find(
-        (c) => c.children.includes(interest) || c.name === interest,
-      );
-      if (matchedCategory && !mappedBackendTags.includes(matchedCategory.backendTag)) {
-        mappedBackendTags.push(matchedCategory.backendTag);
-      }
-    });
-
-    // We send a unified list of mapped tags (for scoring match) and raw strings (for details)
-    const interestsPayload = [...mappedBackendTags, ...selectedInterests];
+    // simpleInterestOptions already map directly to valid InterestTag values
+    const interestsPayload = selectedInterests;
 
     // Build the Survey answers logging list
     const answersPayload = [
@@ -661,81 +605,36 @@ export function OnboardingScreen() {
                 </View>
               )}
 
-              {/* Step 6: Hierarchical Interests Grid (#47) */}
+              {/* Step 6: Simple Flat Interest Chips */}
               {step === 6 && (
                 <View style={styles.interestContainer}>
-                  {interestCategories.map((category) => {
-                    const allSelected = isCategoryAllSelected(category.name);
-                    return (
-                      <View key={category.name} style={styles.categoryCard}>
-                        {/* Parent Category Header */}
+                  <View style={styles.chipsWrap}>
+                    {simpleInterestOptions.map((opt) => {
+                      const isSelected = selectedInterests.includes(opt.value);
+                      return (
                         <Pressable
-                          onPress={() => toggleParentCategory(category.name)}
+                          key={opt.value}
+                          onPress={() => toggleChildInterest(opt.value)}
                           style={[
-                            styles.categoryHeader,
-                            allSelected && styles.categoryHeaderSelected,
+                            styles.interestChip,
+                            isSelected && styles.interestChipSelected,
                           ]}
                         >
-                          <Text style={styles.categoryTitle}>
-                            {category.emoji} {category.name}
-                          </Text>
-                          <View
+                          <Text
                             style={[
-                              styles.categoryCheck,
-                              allSelected && styles.categoryCheckSelected,
+                              styles.interestChipLabel,
+                              isSelected && styles.interestChipLabelSelected,
                             ]}
                           >
-                            {allSelected ? <Text style={styles.checkmarkMini}>✓</Text> : null}
-                          </View>
+                            {opt.label}
+                          </Text>
                         </Pressable>
-
-                        {/* Child Chips (Rendered only if category has children) */}
-                        {category.children.length > 0 ? (
-                          <View style={styles.chipsWrap}>
-                            {category.children.map((child) => {
-                              const isSelected = selectedInterests.includes(child);
-                              return (
-                                <Pressable
-                                  key={child}
-                                  onPress={() => toggleChildInterest(child)}
-                                  style={[
-                                    styles.interestChip,
-                                    isSelected && styles.interestChipSelected,
-                                  ]}
-                                >
-                                  <Text
-                                    style={[
-                                      styles.interestChipLabel,
-                                      isSelected && styles.interestChipLabelSelected,
-                                    ]}
-                                  >
-                                    {child}
-                                  </Text>
-                                </Pressable>
-                              );
-                            })}
-                          </View>
-                        ) : null}
-                      </View>
-                    );
-                  })}
-
-                  {/* Custom Write-In Interest Option */}
-                  <View style={styles.customInterestCard}>
-                    <Text style={styles.customInterestTitle}>+ 직접 입력</Text>
-                    <View style={styles.inputRow}>
-                      <TextInput
-                        placeholder="관심 키워드를 입력해 주세요 (예: 바이오시밀러)"
-                        placeholderTextColor="#A4A9A5"
-                        style={styles.customInput}
-                        value={customInterest}
-                        onChangeText={setCustomInterest}
-                      />
-                      <Pressable onPress={handleAddCustomInterest} style={styles.customAddBtn}>
-                        <Text style={styles.customAddBtnText}>추가</Text>
-                      </Pressable>
-                    </View>
+                      );
+                    })}
                   </View>
+                  <Text style={styles.interestHint}>
+                    관심 분야를 하나 이상 선택해 주세요. 설정에서 세부 항목을 더 추가할 수 있어요.
+                  </Text>
                 </View>
               )}
             </ScrollView>
@@ -958,6 +857,12 @@ const styles = StyleSheet.create({
   interestContainer: {
     gap: 16,
   },
+  interestHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
   categoryCard: {
     borderColor: colors.border,
     borderRadius: 16,
@@ -1078,7 +983,8 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: 14,
+    minHeight: 64,
     height: 52,
     justifyContent: 'center',
     width: '100%',

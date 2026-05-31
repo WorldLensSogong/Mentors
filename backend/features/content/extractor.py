@@ -77,14 +77,15 @@ class ContentExtractor:
                 "trafilatura not installed — BS4 heuristic fallback만 사용"
             )
 
-    async def extract(self, url: str) -> tuple[Optional[str], Optional[str]]:
-        """URL에서 (body, image_url) 추출. 실패한 컴포넌트는 None.
+    async def extract(self, url: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """URL에서 (body, image_url, resolved_url) 추출. 실패한 컴포넌트는 None.
 
         body가 MIN_ARTICLE_CHARS 미만이면 body=None 반환. image는 best-effort —
         body 추출 실패해도 이미지만 따로 줄 수 있음.
+        resolved_url은 Google News redirect 해소 후 최종 publisher URL.
         """
         if not url:
-            return (None, None)
+            return (None, None, None)
 
         async with self._semaphore:
             try:
@@ -94,10 +95,10 @@ class ContentExtractor:
                     "content.extractor.fetch_failed",
                     extra={"url": url[:200], "err": str(e)[:200]},
                 )
-                return (None, None)
+                return (None, None, None)
 
             if not html:
-                return (None, None)
+                return (None, None, None)
 
             # Google News interstitial → 실 publisher URL로 second-hop
             if final_url and "news.google.com" in (urlparse(final_url).netloc or ""):
@@ -116,13 +117,21 @@ class ContentExtractor:
             body = self._extract_body(html, final_url or url)
             image_url = self._extract_image(html, final_url or url)
 
+            # Google 도메인 이미지(Google 로고 등) 필터링
+            if image_url and self._is_google_image(image_url):
+                logger.debug(
+                    "content.extractor.google_image_filtered",
+                    extra={"image_url": image_url[:200]},
+                )
+                image_url = None
+
             if not body:
-                return (None, image_url)
+                return (None, image_url, final_url)
 
             cleaned = self._postprocess(body)
             if len(cleaned) < MIN_ARTICLE_CHARS:
-                return (None, image_url)
-            return (cleaned[:MAX_ARTICLE_CHARS], image_url)
+                return (None, image_url, final_url)
+            return (cleaned[:MAX_ARTICLE_CHARS], image_url, final_url)
 
     # ------------------------------------------------------------------
     # HTTP fetch
@@ -309,6 +318,20 @@ class ContentExtractor:
             return int(str(v).strip().rstrip("px"))
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _is_google_image(url: str) -> bool:
+        """Google 도메인 이미지(Google 로고·플레이스홀더) 여부 확인."""
+        if not url:
+            return False
+        try:
+            netloc = urlparse(url).netloc.lower()
+            return any(
+                d in netloc
+                for d in ("google.com", "gstatic.com", "googleapis.com", "googleusercontent.com")
+            )
+        except Exception:
+            return False
 
     @staticmethod
     def _absolutize_image(src: str, base_url: str) -> Optional[str]:
