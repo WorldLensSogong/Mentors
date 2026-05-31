@@ -324,6 +324,27 @@ export const interestCategories: InterestCategory[] = [
   },
 ];
 
+/** 온보딩 6단계에서 보여줄 단순 관심 분야 (큰 카테고리만) */
+export interface SimpleInterestOption {
+  value: InterestTag;
+  label: string;
+}
+
+export const simpleInterestOptions: SimpleInterestOption[] = [
+  { value: 'domestic-stock', label: '국내 주식' },
+  { value: 'us-stock', label: '미국·해외 주식' },
+  { value: 'etf', label: 'ETF·펀드' },
+  { value: 'crypto', label: '암호화폐' },
+  { value: 'it', label: 'IT·테크' },
+  { value: 'energy', label: '에너지' },
+  { value: 'finance', label: '금융' },
+  { value: 'bio', label: '바이오' },
+  { value: 'defense', label: '방산' },
+  { value: 'entertainment-media', label: '엔터·미디어' },
+  { value: 'fashion-consumer', label: '패션·소비재' },
+  { value: 'macro', label: '거시경제' },
+];
+
 // Helper to map custom survey inputs to backend expected types
 export function mapGoalToBackend(goals: string[]): LearningGoal {
   if (goals.includes('study')) {

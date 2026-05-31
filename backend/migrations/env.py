@@ -29,7 +29,7 @@ from features.growth.models import (  # noqa: E402, F401
 from features.learning.models import (  # noqa: E402, F401
     ChatMessage,
     ChatSession,
-    QuizAttempt,
+    LearningQuizProgress,
 )
 from features.onboarding.models import (  # noqa: E402, F401
     OnboardingSurveyAnswer,

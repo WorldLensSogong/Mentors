@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,10 +13,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute, useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { colors } from '@/constants/colors';
-import type { AppStackParamList } from '@/navigation/types';
+import type { AppStackParamList, MainTabParamList } from '@/navigation/types';
 import {
   getDebateEligibility,
   getDebateApiErrorMessage,
@@ -79,19 +78,21 @@ type DebateStatus = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 type ArenaView = 'setup' | 'debate';
 
 export function DebateArenaScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const navigation = useNavigation<NavigationProp<AppStackParamList>>();
+  const route = useRoute<RouteProp<MainTabParamList, 'DebateArena'>>();
+  const routeParams = route.params;
   const abortRef = useRef<AbortController | null>(null);
-  const [arenaView, setArenaView] = useState<ArenaView>('setup');
+  const [arenaView, setArenaView] = useState<ArenaView>(routeParams?.replaySessionId ? 'debate' : 'setup');
   const [eligibility, setEligibility] = useState<DebateEligibility | null>(null);
   const [personas, setPersonas] = useState<DebatePersona[]>(FALLBACK_PERSONAS);
   const [selectedFirstId, setSelectedFirstId] = useState(DEFAULT_FIRST_PERSONA.id);
   const [selectedSecondId, setSelectedSecondId] = useState(DEFAULT_SECOND_PERSONA.id);
   const [activeSlot, setActiveSlot] = useState<PlayerSlot | null>(null);
-  const [topic, setTopic] = useState(DEFAULT_TOPICS[0]);
-  const [resolvedTopic, setResolvedTopic] = useState('');
+  const [topic, setTopic] = useState(routeParams?.replayTopic ?? DEFAULT_TOPICS[0]);
+  const [resolvedTopic, setResolvedTopic] = useState(routeParams?.replayTopic ?? '');
   const [status, setStatus] = useState<DebateStatus>('idle');
   const [statusText, setStatusText] = useState(
-    '멘토와 주제를 고른 뒤 토론을 시작하세요.',
+    routeParams?.replaySessionId ? '저장된 토론을 불러오고 있어요.' : '멘토와 주제를 고른 뒤 토론을 시작하세요.',
   );
   const [errorMessage, setErrorMessage] = useState('');
   const [documents, setDocuments] = useState<DebateDocument[]>([]);
@@ -120,10 +121,14 @@ export function DebateArenaScreen() {
     return 0;
   }, [status, turns]);
   const progressWidth = `${Math.round(progress * 100)}%` as `${number}%`;
+  const replayPersonaAName = routeParams?.replayPersonaAName;
+  const replayPersonaBName = routeParams?.replayPersonaBName;
   const headerSubtitle =
     arenaView === 'setup'
       ? '두 멘토의 관점을 비교하며 판단력을 키워보세요'
-      : `${firstPersona.name} vs ${secondPersona.name}`;
+      : replayPersonaAName && replayPersonaBName
+        ? `${replayPersonaAName} vs ${replayPersonaBName}`
+        : `${firstPersona.name} vs ${secondPersona.name}`;
   const primaryActionLabel =
     arenaView === 'setup'
       ? '투기장 입장하기'
@@ -133,56 +138,86 @@ export function DebateArenaScreen() {
           ? '다시 시도하기'
           : '토론 진행 중';
 
+  // 탭에 포커스될 때마다 eligibility를 재조회해서 승급 후에도 바로 반영
+  useFocusEffect(
+    useCallback(() => {
+      let ignore = false;
+
+      getDebateEligibility()
+        .then((result) => {
+          if (ignore) return;
+          setEligibility(result);
+          if (!result.allowed) {
+            setStatusText(result.reason ?? '현재 계정에서는 투기장을 이용할 수 없습니다.');
+          } else {
+            setStatusText('멘토와 주제를 고른 뒤 토론을 시작하세요.');
+          }
+        })
+        .catch((error) => {
+          if (!ignore) {
+            setStatusText(getDebateApiErrorMessage(error, '투기장 권한을 확인하지 못했습니다.'));
+          }
+        });
+
+      listDebatePersonas()
+        .then((items) => {
+          if (ignore || items.length < 2) return;
+          setPersonas(items);
+          setSelectedFirstId((current) =>
+            items.some((item) => item.id === current) ? current : (items[0]?.id ?? current),
+          );
+          setSelectedSecondId((current) =>
+            items.some((item) => item.id === current) ? current : (items[1]?.id ?? current),
+          );
+        })
+        .catch(() => {
+          if (!ignore) setPersonas(FALLBACK_PERSONAS);
+        });
+
+      return () => {
+        ignore = true;
+      };
+    }, []),
+  );
+
   useEffect(() => {
-    let ignore = false;
-
-    getDebateEligibility()
-      .then((result) => {
-        if (ignore) {
-          return;
-        }
-        setEligibility(result);
-        if (!result.allowed) {
-          setStatusText(
-            result.reason ?? '현재 계정에서는 투기장을 이용할 수 없습니다.',
-          );
-          return;
-        }
-
-        setStatusText('멘토와 주제를 고른 뒤 토론을 시작하세요.');
-      })
-      .catch((error) => {
-        if (!ignore) {
-          setStatusText(
-            getDebateApiErrorMessage(error, '투기장 권한을 확인하지 못했습니다.'),
-          );
-        }
-      });
-
-    listDebatePersonas()
-      .then((items) => {
-        if (ignore || items.length < 2) {
-          return;
-        }
-        setPersonas(items);
-        setSelectedFirstId((current) =>
-          items.some((item) => item.id === current) ? current : (items[0]?.id ?? current),
-        );
-        setSelectedSecondId((current) =>
-          items.some((item) => item.id === current) ? current : (items[1]?.id ?? current),
-        );
-      })
-      .catch(() => {
-        if (!ignore) {
-          setPersonas(FALLBACK_PERSONAS);
-        }
-      });
-
     return () => {
-      ignore = true;
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const streamUrl = routeParams?.replayStreamUrl;
+    if (!streamUrl) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setStatus('streaming');
+    setStatusText('저장된 토론을 불러오고 있어요.');
+    setDocuments([]);
+    setTurns([]);
+
+    streamDebate({ streamUrl, signal: controller.signal, onEvent: handleStreamEvent })
+      .then(() => {
+        if (abortRef.current === controller) {
+          setStatus((current) => (current === 'error' ? current : 'done'));
+          setStatusText('토론이 완료되었습니다.');
+        }
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        if (abortRef.current === controller) {
+          setStatus('error');
+          setErrorMessage(getDebateApiErrorMessage(error, '토론을 불러오지 못했어요.'));
+        }
+      })
+      .finally(() => {
+        if (abortRef.current === controller) abortRef.current = null;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeParams?.replayStreamUrl]);
 
   function handleSelectPersona(personaId: string) {
     if (!activeSlot) {
@@ -354,7 +389,7 @@ export function DebateArenaScreen() {
       return;
     }
 
-    navigation.navigate('Search');
+    navigation.navigate('MainTabs', { screen: 'Search', params: undefined });
   }
 
   return (
@@ -373,6 +408,17 @@ export function DebateArenaScreen() {
                 {arenaView === 'setup' ? '투기장' : resolvedTopic || topic}
               </Text>
               <Text style={styles.subtitle}>{headerSubtitle}</Text>
+            </View>
+            <View style={styles.headerIconRow}>
+              <Pressable onPress={() => Alert.alert('알림', '새로운 알림이 없습니다.')} style={styles.headerIconBtn}>
+                <Text style={styles.headerIconText}>🔔</Text>
+              </Pressable>
+              <Pressable onPress={() => Alert.alert('스크랩', '스크랩 페이지 개발 중입니다.')} style={styles.headerIconBtn}>
+                <Text style={styles.headerIconText}>📌</Text>
+              </Pressable>
+              <Pressable onPress={() => navigation.navigate('Settings')} style={styles.headerIconBtn}>
+                <Text style={styles.headerIconText}>👤</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -424,29 +470,6 @@ export function DebateArenaScreen() {
             </Text>
           </Pressable>
         </View>
-        <View style={styles.bottomTab}>
-          <Pressable onPress={() => navigation.navigate('Search')} style={styles.bottomTabItem}>
-            <Text style={styles.bottomTabIcon}>🔍</Text>
-            <Text style={styles.bottomTabText}>탐색</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() =>
-              Alert.alert('채팅', '챗봇 채팅 화면은 S#03 구현 예정입니다.')
-            }
-            style={styles.bottomTabItem}
-          >
-            <Text style={styles.bottomTabIcon}>💬</Text>
-            <Text style={styles.bottomTabText}>채팅</Text>
-          </Pressable>
-
-          <Pressable style={styles.bottomTabItem}>
-            <View style={styles.bottomTabActiveBg}>
-              <Text style={styles.bottomTabIcon}>⚔️</Text>
-              <Text style={[styles.bottomTabText, styles.bottomTabActiveText]}>투기장</Text>
-            </View>
-          </Pressable>
-        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -489,6 +512,18 @@ function SetupPanel({
           주제 하나를 두고 서로 다른 투자 전략을 맞붙입니다.
         </Text>
       </View>
+
+      {!tier || tier === 'T1' ? (
+        <View style={styles.lockedBanner}>
+          <Text style={styles.lockedIcon}>🔒</Text>
+          <View style={styles.lockedTextGroup}>
+            <Text style={styles.lockedTitle}>투기장은 T2부터 활성화됩니다</Text>
+            <Text style={styles.lockedDesc}>
+              학습 기록 탭에서 이해도 게이지를 80%까지 채우고 승급시험을 통과하면 투기장이 열립니다.
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       <Text style={styles.sectionTitle}>대결 멘토 선택</Text>
       <View style={styles.playersRow}>
@@ -842,7 +877,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: 190,
+    paddingBottom: 110,
   },
   header: {
     alignItems: 'center',
@@ -867,6 +902,23 @@ const styles = StyleSheet.create({
   },
   headerTextWrap: {
     flex: 1,
+  },
+  headerIconRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerIconBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 99,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  headerIconText: {
+    fontSize: 18,
   },
   title: {
     color: colors.text,
@@ -981,9 +1033,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
-    minHeight: 86,
-    padding: 12,
+    minHeight: 120,
+    padding: 14,
     width: '48%',
+    justifyContent: 'center',
   },
   mentorOptionSelected: {
     backgroundColor: colors.primarySoft,
@@ -1065,6 +1118,34 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '700',
+    lineHeight: 19,
+  },
+  lockedBanner: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+    padding: 16,
+  },
+  lockedIcon: {
+    fontSize: 22,
+  },
+  lockedTextGroup: {
+    flex: 1,
+    gap: 6,
+  },
+  lockedTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  lockedDesc: {
+    color: colors.muted,
+    fontSize: 13,
     lineHeight: 19,
   },
   resolvedInline: {
@@ -1252,7 +1333,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248, 249, 248, 0.96)',
     borderColor: colors.border,
     borderTopWidth: 1,
-    bottom: 72,
+    bottom: 0,
     flexDirection: 'row',
     gap: 10,
     left: 0,

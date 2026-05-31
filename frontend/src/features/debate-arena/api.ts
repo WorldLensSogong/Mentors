@@ -5,6 +5,8 @@ import { parseDebateEventBuffer } from './logic';
 import type {
   DebateEligibility,
   DebatePersona,
+  DebateSessionDetail,
+  DebateSessionListResponse,
   DebateStartRequest,
   DebateStartResponse,
   DebateStreamEvent,
@@ -20,6 +22,18 @@ export async function getDebateEligibility(): Promise<DebateEligibility> {
 export async function listDebatePersonas(): Promise<DebatePersona[]> {
   const response = await apiClient.get<DebatePersona[]>('/api/debate/personas');
   return response.data.filter((persona) => persona.is_public);
+}
+
+export async function listDebateSessions(): Promise<DebateSessionListResponse> {
+  const response = await apiClient.get<DebateSessionListResponse>('/api/debate/sessions');
+  return response.data;
+}
+
+export async function getDebateSessionDetail(sessionId: number): Promise<DebateSessionDetail> {
+  const response = await apiClient.get<DebateSessionDetail>(
+    `/api/debate/sessions/${sessionId}/detail`,
+  );
+  return response.data;
 }
 
 export async function startDebate(payload: DebateStartRequest): Promise<DebateStartResponse> {

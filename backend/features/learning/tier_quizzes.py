@@ -103,8 +103,8 @@ def _parse_tier_quizzes(raw: object) -> dict[Tier, tuple[TierQuiz, ...]]:
             seen_question_ids.add(quiz.question_id)
             quizzes.append(quiz)
 
-        if any(count != 2 for count in concept_counts.values()):
-            raise ValueError(f"{tier.value} must define exactly two quizzes per concept.")
+        if any(count != 1 for count in concept_counts.values()):
+            raise ValueError(f"{tier.value} must define exactly one quiz per concept.")
 
         parsed[tier] = tuple(quizzes)
 

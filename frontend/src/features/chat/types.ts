@@ -53,12 +53,17 @@ export interface LearningChatStreamChunk {
   citations?: Record<string, unknown>[];
 }
 
+export interface LearningChatFollowUpQuizOption {
+  index: number;
+  text: string;
+}
+
 export interface LearningChatFollowUpQuiz {
   concept_id: number;
   concept_name: string;
   quiz_index: number;
   question: string;
-  options: string[];
+  options: LearningChatFollowUpQuizOption[];
 }
 
 export type LearningChatStreamEvent =

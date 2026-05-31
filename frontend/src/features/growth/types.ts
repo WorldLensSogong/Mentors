@@ -55,3 +55,24 @@ export interface GrowthStageCopy {
   title: string;
   description: string;
 }
+
+export interface PromotionQuestionResult {
+  question_id: string;
+  prompt: string;
+  user_choice_id: string;
+  correct_choice_id: string;
+  is_correct: boolean;
+  choices: Record<string, string>;
+}
+
+export interface PromotionAttemptDetail {
+  id: number;
+  current_tier: string;
+  target_tier: string | null;
+  total_questions: number;
+  correct_answers: number;
+  score_percent: number;
+  passed: boolean;
+  attempted_at: string;
+  question_results: PromotionQuestionResult[];
+}

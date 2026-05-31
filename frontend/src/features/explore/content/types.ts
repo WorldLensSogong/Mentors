@@ -120,6 +120,41 @@ export interface ScrapCreateRequest {
 }
 
 // ---------------------------------------------------------------------------
+// RSS 직접 피드 — /api/content/news/top, /api/content/news/rss-search
+// ---------------------------------------------------------------------------
+
+export interface RssNewsItem {
+  title: string;
+  url: string;
+  source_name: string | null;
+  published_at: string | null; // ISO-8601 or null
+  summary: string | null;
+  keywords: string[];
+}
+
+// ---------------------------------------------------------------------------
+// URL 즉석 AI 요약 — /api/content/news/summarize-url
+// ---------------------------------------------------------------------------
+
+export interface UrlSummarizeRequest {
+  url: string;
+  title?: string;
+}
+
+export interface UrlSummarizeResponse {
+  title: string;
+  ai_summary: string;
+  image_url: string | null;
+  original_url: string;
+  // AI 분석 필드
+  sentiment: 'positive' | 'neutral' | 'negative' | null;
+  investment_relevance: 'high' | 'medium' | 'low' | null;
+  strategies: string[];
+  keywords: string[];
+  reliability_score: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Admin — AI retry
 // ---------------------------------------------------------------------------
 

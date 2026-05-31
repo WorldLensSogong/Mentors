@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +18,8 @@ import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { localLogin, issueDevAccessToken, getAuthApiErrorMessage } from '../api';
 import type { AppStackParamList } from '@/navigation/types';
+
+const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
 export function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
@@ -27,6 +30,29 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // 구글 OAuth 콜백: ?token=<jwt> 파라미터가 URL에 있으면 자동 로그인 (웹 전용)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const oauthError = params.get('error');
+
+    if (token) {
+      // URL 파라미터 정리 후 로그인 처리
+      window.history.replaceState({}, '', window.location.pathname);
+      resetOnboarding();
+      setAccessToken(token);
+      return;
+    }
+
+    if (oauthError) {
+      window.history.replaceState({}, '', window.location.pathname);
+      setErrorMsg(`구글 로그인 실패: ${oauthError}`);
+    }
+  }, [resetOnboarding, setAccessToken]);
 
   async function handleDevBypass() {
     setIsSubmitting(true);
@@ -40,6 +66,17 @@ export function LoginScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handleGoogleLogin() {
+    // 웹: 현재 URL을 return_to로 전달 → OAuth 완료 후 ?token= 파라미터와 함께 돌아옴
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const returnTo = window.location.origin + window.location.pathname;
+      window.location.href = `${apiBaseUrl}/auth/google/login?return_to=${encodeURIComponent(returnTo)}`;
+      return;
+    }
+    // 모바일: 기본 브라우저로 열기 (딥링크 미설정 시 제한적)
+    void Linking.openURL(`${apiBaseUrl}/auth/google/login`);
   }
 
   async function handleLogin() {
@@ -144,6 +181,27 @@ export function LoginScreen() {
               ) : (
                 <Text style={styles.submitButtonText}>로그인</Text>
               )}
+            </Pressable>
+
+            {/* Divider */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>또는</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google Login Button */}
+            <Pressable
+              disabled={isSubmitting}
+              onPress={handleGoogleLogin}
+              style={({ pressed }) => [
+                styles.googleButton,
+                isSubmitting && styles.buttonDisabled,
+                pressed && !isSubmitting && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.googleButtonIcon}>G</Text>
+              <Text style={styles.googleButtonText}>구글로 로그인</Text>
             </Pressable>
 
             {/* Toggle Link */}
@@ -265,6 +323,45 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: colors.surface,
     fontSize: 16,
+    fontWeight: '700',
+  },
+  dividerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+    marginBottom: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  googleButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    height: 52,
+    justifyContent: 'center',
+    marginTop: 12,
+    gap: 10,
+  },
+  googleButtonIcon: {
+    color: '#4285F4',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  googleButtonText: {
+    color: colors.text,
+    fontSize: 15,
     fontWeight: '700',
   },
   footerRow: {

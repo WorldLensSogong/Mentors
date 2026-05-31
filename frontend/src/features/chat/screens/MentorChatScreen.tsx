@@ -45,9 +45,13 @@ import type {
   TierQuizCatalogResponse,
 } from '@/features/learning/types';
 import type { GrowthProgressResponse } from '@/features/growth/types';
+import { getGrowthProgress } from '@/features/growth/api';
 import { useUserStore } from '@/store/userStore';
-import { applyOptimisticSolvedQuizProgress, buildGrowthProgressQueryKey } from '../growth/logic';
-import type { MainTabParamList, RootStackParamList } from '../navigation/types';
+import {
+  applyOptimisticSolvedQuizProgress,
+  buildGrowthProgressQueryKey,
+} from '@/features/growth/logic';
+import type { AppStackParamList, MainTabParamList } from '@/navigation/types';
 
 type MentorChatRoute = RouteProp<MainTabParamList, 'MentorChat'>;
 
@@ -83,7 +87,7 @@ function buildOptimisticQuizCatalog(
 }
 
 export function MentorChatScreen() {
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NavigationProp<AppStackParamList>>();
   const route = useRoute<MentorChatRoute>();
   const queryClient = useQueryClient();
   const accessToken = useUserStore((state) => state.accessToken);
@@ -109,6 +113,18 @@ export function MentorChatScreen() {
 
   const growthProgressQueryKey = buildGrowthProgressQueryKey(accessToken);
   const learningQuizzesQueryKey = ['learning-quizzes', accessToken] as const;
+
+  const growthQuery = useQuery({
+    queryKey: growthProgressQueryKey,
+    queryFn: getGrowthProgress,
+    enabled: Boolean(accessToken),
+    retry: 0,
+    staleTime: 60_000,
+  });
+
+  const growthProgress = growthQuery.data?.progress_percent ?? 0;
+  const growthTier = growthQuery.data?.current_tier ?? 'T1';
+  const growthWidth = `${Math.min(growthProgress, 100)}%` as `${number}%`;
 
   const sessionsQuery = useQuery({
     queryKey: ['learning-chat-sessions', accessToken],
@@ -165,7 +181,7 @@ export function MentorChatScreen() {
             queryFn: getCurrentTierQuizzes,
           });
         } catch {
-          // Ignore refresh failures and keep the optimistic quiz state.
+          // Ignore refresh failures.
         }
       }
 
@@ -399,30 +415,41 @@ export function MentorChatScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        {/* 헤더 */}
         <View style={styles.header}>
-          <View style={styles.headerTextGroup}>
-            <Text style={styles.headerEyebrow}>멘토 채팅</Text>
-            <Text style={styles.headerTitle}>멘토와 실시간으로 개념을 정리해 보세요</Text>
-            <Text style={styles.headerDescription}>
-              가치, 성장, 배당, 모멘텀 관점을 가진 멘토에게 질문하고, 필요한 경우 팔로우업 퀴즈로
-              이해도를 바로 점검할 수 있어요.
-            </Text>
-          </View>
+          <Text style={styles.headerTitle}>멘토 채팅</Text>
           <View style={styles.headerActionRow}>
             <Pressable
-              onPress={() => navigation.navigate('ChatHistory')}
-              style={({ pressed }) => [styles.historyButton, pressed && styles.pressed]}
+              onPress={() => {}}
+              style={({ pressed }) => [styles.headerIconBtn, pressed && styles.pressed]}
             >
-              <Text style={styles.historyButtonText}>채팅 기록</Text>
+              <Text style={styles.headerIconText}>🔔</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {}}
+              style={({ pressed }) => [styles.headerIconBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.headerIconText}>📌</Text>
             </Pressable>
             <Pressable
               onPress={() => navigation.navigate('Settings')}
-              style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.headerIconBtn, pressed && styles.pressed]}
             >
-              <Text style={styles.settingsButtonText}>설정</Text>
+              <Text style={styles.headerIconText}>👤</Text>
             </Pressable>
           </View>
         </View>
+
+        {/* 성장 게이지바 */}
+        {accessToken ? (
+          <View style={styles.growthBar}>
+            <Text style={styles.growthTierLabel}>{growthTier} 이해도</Text>
+            <View style={styles.growthTrack}>
+              <View style={[styles.growthFill, { width: growthWidth }]} />
+            </View>
+            <Text style={styles.growthPct}>{growthProgress}%</Text>
+          </View>
+        ) : null}
 
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -603,16 +630,14 @@ export function MentorChatScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <View style={styles.modeRow}>
-            <View style={[styles.modeChip, styles.modeChipSelected]}>
-              <Text style={[styles.modeChipText, styles.modeChipTextSelected]}>채팅 모드</Text>
-            </View>
-            <View style={styles.modeChip}>
-              <Text style={styles.modeChipText}>복습 메모</Text>
-            </View>
-          </View>
-
           <View style={styles.composer}>
+            {/* 학습 기록 버튼 — 입력창 왼쪽 */}
+            <Pressable
+              onPress={() => navigation.navigate('LearningRecord')}
+              style={({ pressed }) => [styles.composerIconBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.composerIconText}>📊</Text>
+            </Pressable>
             <TextInput
               blurOnSubmit={false}
               multiline
@@ -658,61 +683,73 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  headerActionRow: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: 8,
-  },
-  headerTextGroup: {
-    gap: 6,
-  },
-  headerEyebrow: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.6,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   headerTitle: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '800',
-    lineHeight: 30,
   },
-  headerDescription: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
+  headerActionRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
   },
-  historyButton: {
-    alignSelf: 'flex-start',
+  headerIconBtn: {
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 999,
+    borderRadius: 99,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
   },
-  historyButtonText: {
-    color: colors.text,
-    fontSize: 13,
+  headerIconText: {
+    fontSize: 16,
+  },
+  growthBar: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  growthTierLabel: {
+    color: colors.muted,
+    fontSize: 12,
     fontWeight: '700',
+    width: 64,
   },
-  settingsButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background,
-    borderColor: colors.border,
+  growthTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: colors.primarySoft,
     borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    overflow: 'hidden',
   },
-  settingsButtonText: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
+  growthFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+  },
+  growthPct: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    width: 34,
+    textAlign: 'right',
   },
   scrollContent: {
     gap: 16,
@@ -977,27 +1014,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
   },
-  modeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  modeChip: {
-    backgroundColor: '#ECEEEC',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  modeChipSelected: {
-    backgroundColor: colors.primarySoft,
-  },
-  modeChipText: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  modeChipTextSelected: {
-    color: colors.primary,
-  },
   composer: {
     alignItems: 'flex-end',
     backgroundColor: colors.background,
@@ -1005,12 +1021,23 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     paddingBottom: 10,
-    paddingLeft: 16,
+    paddingLeft: 10,
     paddingRight: 10,
     paddingTop: 10,
   },
+  composerIconBtn: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 16,
+    height: 38,
+    justifyContent: 'center',
+    marginBottom: 2,
+    width: 38,
+  },
+  composerIconText: { fontSize: 18 },
   input: {
     color: colors.text,
     flex: 1,
