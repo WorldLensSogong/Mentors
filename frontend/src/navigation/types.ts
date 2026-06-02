@@ -1,5 +1,6 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { LearningChatMentorId } from '@/features/chat/types';
+import type { DailyReportCard } from '@/features/learning/types';
 
 export type MainTabParamList = {
   Search: undefined;
@@ -52,6 +53,10 @@ export type AppStackParamList = {
   AccountSettings: undefined;
   NewsDetail: {
     newsId: number;
+  };
+  DailyReportDetail: {
+    report: DailyReportCard;
+    opener?: string;
   };
 };
 

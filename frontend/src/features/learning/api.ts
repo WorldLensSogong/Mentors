@@ -4,6 +4,7 @@ import type {
   SubmitLearningQuizRequest,
   SubmitLearningQuizResponse,
   TierQuizCatalogResponse,
+  TodayOpenerResponse,
 } from './types';
 
 export async function getCurrentTierQuizzes(): Promise<TierQuizCatalogResponse> {
@@ -17,6 +18,13 @@ export async function submitLearningQuiz(
   const response = await apiClient.post<SubmitLearningQuizResponse>(
     '/api/learning/quizzes/submit',
     payload,
+  );
+  return response.data;
+}
+
+export async function getTodayOpener(mentorId: number): Promise<TodayOpenerResponse> {
+  const response = await apiClient.get<TodayOpenerResponse>(
+    `/api/learning/mentors/${mentorId}/today-opener`,
   );
   return response.data;
 }

@@ -12,6 +12,7 @@ import { LoginScreen } from '../features/auth/screens/LoginScreen';
 import { SignupScreen } from '../features/auth/screens/SignupScreen';
 import { OnboardingScreen } from '../features/onboarding/screens/OnboardingScreen';
 import { NewsDetailScreen } from '../features/explore/screens/NewsDetailScreen';
+import { DailyReportDetailScreen } from '../features/report/screens/DailyReportDetailScreen';
 import { LearningRecordScreen } from '../features/growth/screens/LearningRecordScreen';
 import { PromotionTestScreen } from '../features/growth/screens/PromotionTestScreen';
 import { PromotionResultScreen } from '../features/growth/screens/PromotionResultScreen';
@@ -87,6 +88,7 @@ export function RootNavigator() {
           <Stack.Screen name="MainTabs" component={MainTabNavigator} />
           <Stack.Screen name="LearningRecord" component={LearningRecordScreen} />
           <Stack.Screen name="NewsDetail" component={NewsDetailScreen} />
+          <Stack.Screen name="DailyReportDetail" component={DailyReportDetailScreen} />
           <Stack.Screen name="PromotionTest" component={PromotionTestScreen} />
           <Stack.Screen name="PromotionResult" component={PromotionResultScreen} />
           <Stack.Screen name="ChatHistory" component={ChatHistoryScreen} />
