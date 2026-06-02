@@ -46,6 +46,7 @@ from features.growth.models import (  # noqa: E402, F401
 from features.learning.models import (  # noqa: E402, F401
     ChatMessage,
     ChatSession,
+    DailyOpenerLog,
     LearningQuizProgress,
 )
 from features.onboarding.models import (  # noqa: E402, F401
