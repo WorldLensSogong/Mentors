@@ -7,6 +7,7 @@ from .protocols import (
     DailyReportReader,
     DailyReportRef,
     GrowthReader,
+    IndustryTopicRef,
     NewsRef,
 )
 from .registry import (
@@ -42,6 +43,7 @@ __all__ = [
     "DailyReportReader",
     "DailyReportRef",
     "GrowthReader",
+    "IndustryTopicRef",
     "NewsRef",
     "content_reader",
     "daily_report_reader",

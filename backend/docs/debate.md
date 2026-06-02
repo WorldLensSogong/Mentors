@@ -133,9 +133,9 @@
 - `market_entities`에는 종목, 테마, 별칭, 섹터, 산업 정보를 저장합니다.
 - `market_news_items`에는 주기적으로 수집한 관련 뉴스 메타데이터를 저장합니다.
 - `MARKET_DATA_REFRESH_ENABLED=true`이면 APScheduler가 `MARKET_DATA_REFRESH_INTERVAL_MINUTES` 주기로 캐시 갱신 작업을 등록합니다.
-- `MARKET_DATA_DISCOVERY_ENABLED=true`이면 캐시에 없는 한국 종목형 주제를 네이버 금융 검색으로 먼저 확인하고, 매칭이 없을 때 Finnhub 검색/프로필 API로 확인한 뒤 종목과 산업 테마를 캐시에 저장합니다.
+- `MARKET_DATA_DISCOVERY_ENABLED=true`이면 캐시에 없는 한국 종목형 주제를 DART Open API로 먼저 확인하고, 매칭이 없을 때 Finnhub 검색/프로필 API로 확인한 뒤 종목과 산업 테마를 캐시에 저장합니다.
 - `MARKET_DATA_SEED_SYMBOLS`에는 startup refresh 때 미리 캐시에 적재할 대표 종목 심볼을 쉼표로 지정합니다.
-- `MARKET_DATA_SEED_KOREAN_QUERIES`에는 startup refresh 때 네이버 금융 검색으로 미리 적재할 국내 대표 종목명을 쉼표로 지정합니다.
+- `MARKET_DATA_SEED_KOREAN_QUERIES`에는 startup refresh 때 DART Open API로 미리 적재할 국내 대표 종목명을 쉼표로 지정합니다.
 - 캐시에 매칭되는 종목이 있으면 `stock`, 테마가 있으면 `theme`으로 먼저 정규화하고, 매칭이 없을 때만 기존 룰 기반 판별로 fallback합니다.
 
 이 구조는 `팔란티어 전망`처럼 기존 하드코딩 목록에 없는 종목과 `우주테크 관련주 전망` 같은 신규 테마를 구분하기 위한 기반입니다.

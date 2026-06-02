@@ -13,6 +13,7 @@ from core.ai_pipeline.news_search import news_search
 from core.config import settings
 from core.db import transaction
 from core.exceptions import ExternalServiceError
+from core.market_data.dart import DartStock, dart_market_data
 from core.market_data.finnhub import (
     FinnhubCompany,
     FinnhubCompanyProfile,
@@ -20,8 +21,8 @@ from core.market_data.finnhub import (
     finnhub_market_data,
 )
 from core.market_data.models import MarketEntity
-from core.market_data.naver_finance import NaverFinanceStock, naver_finance_market_data
 from core.market_data.repository import upsert_entity, upsert_news_item
+from core.read_services import IndustryTopicRef, content_reader
 
 logger = logging.getLogger("market_data")
 
@@ -54,7 +55,7 @@ class MarketDataDiscoveryClient(Protocol):
 
 
 class KoreanMarketDataDiscoveryClient(Protocol):
-    async def search_stocks(self, query: str, *, limit: int = 5) -> list[NaverFinanceStock]: ...
+    async def search_stocks(self, query: str, *, limit: int = 5) -> list[DartStock]: ...
 
 
 class SeedEntity(TypedDict, total=False):
@@ -157,7 +158,7 @@ async def refresh_external_market_entities(
         return 0
 
     client = client or finnhub_market_data
-    korean_client = korean_client or naver_finance_market_data
+    korean_client = korean_client or dart_market_data
     refreshed = 0
     for query in _configured_seed_korean_queries():
         stocks = await korean_client.search_stocks(query, limit=1)
@@ -183,7 +184,7 @@ async def discover_entity_from_topic(
         return None
 
     client = client or finnhub_market_data
-    korean_client = korean_client or naver_finance_market_data
+    korean_client = korean_client or dart_market_data
     for query in _topic_discovery_queries(topic):
         scope = _discovery_query_scope(query)
         if scope in {"korean", "mixed"}:
@@ -203,11 +204,46 @@ async def discover_entity_from_topic(
                 )
                 if entity is not None:
                     return entity
+    industry_topic = await discover_industry_theme_from_content(topic)
+    if industry_topic is not None:
+        return await upsert_content_industry_theme(db, industry_topic)
     return None
 
 
-async def upsert_korean_stock(db: AsyncSession, stock: NaverFinanceStock) -> MarketEntity | None:
-    aliases = _unique_nonempty([stock.name, stock.code])
+async def discover_industry_theme_from_content(topic: str) -> IndustryTopicRef | None:
+    try:
+        return await content_reader.find_industry_topic(topic)
+    except RuntimeError:
+        return None
+    except Exception:
+        logger.warning("market_data.content_industry_discovery_failed", exc_info=True)
+        return None
+
+
+async def upsert_content_industry_theme(
+    db: AsyncSession,
+    industry_topic: IndustryTopicRef,
+) -> MarketEntity:
+    symbol = _industry_theme_symbol(f"{industry_topic.industry}_{industry_topic.keyword}")
+    return await upsert_entity(
+        db,
+        kind="theme",
+        symbol=symbol,
+        name=industry_topic.keyword,
+        name_en=industry_topic.keyword,
+        sector=industry_topic.industry,
+        industry=industry_topic.industry,
+        aliases=industry_topic.aliases,
+        themes=_unique_nonempty(
+            [industry_topic.industry, industry_topic.keyword, *industry_topic.companies]
+        ),
+        source="content_pipeline",
+        confidence=75,
+    )
+
+
+async def upsert_korean_stock(db: AsyncSession, stock: DartStock) -> MarketEntity | None:
+    aliases = _unique_nonempty([stock.name, stock.code, stock.corp_code])
     themes = _unique_nonempty(["국내주식", stock.market])
     return await upsert_entity(
         db,
@@ -219,7 +255,7 @@ async def upsert_korean_stock(db: AsyncSession, stock: NaverFinanceStock) -> Mar
         sector=stock.market,
         aliases=aliases,
         themes=themes,
-        source="naver_finance",
+        source="dart",
         confidence=85,
     )
 

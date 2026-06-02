@@ -45,6 +45,7 @@ class Settings(BaseSettings):
 
     # News collectors
     finnhub_api_key: str | None = None
+    dart_api_key: str | None = None
 
     naver_client_id: str | None = None
     naver_client_secret: str | None = None
