@@ -11,6 +11,7 @@ owner: daily_report / 관련 FR: FR-03, UC-02
 boundary: cross-feature read는 user_context·core.read_services 만 사용 (ADR-014).
 """
 
+import asyncio
 import json
 import logging
 from datetime import date, datetime, timedelta, timezone
@@ -43,6 +44,9 @@ logger = logging.getLogger("daily_report.service")
 _KST = timezone(timedelta(hours=9))
 _NEWS_TOP_K = 3
 _DEFAULT_STRATEGY = MentorStrategy.VALUE
+
+# 백그라운드 본문 채움 태스크 레퍼런스 유지(미보유 시 GC로 취소될 수 있음).
+_bg_tasks: set[asyncio.Task[None]] = set()
 
 
 def _today() -> date:
@@ -178,40 +182,50 @@ async def _load_core_news(core: DailyReportCore) -> list[NewsRef]:
     return refs
 
 
-async def _get_or_create_report(
+async def _select_report(
     user_id: UserId,
     strategy: MentorStrategy,
     report_date: date,
     session: AsyncSession,
-) -> tuple[DailyReport, bool]:
-    """그날 그 전략 리포트. 반환: (리포트, 이번 호출이 새로 만들었는지)."""
-    existing = await session.scalar(
+) -> DailyReport | None:
+    report: DailyReport | None = await session.scalar(
         select(DailyReport).where(
             DailyReport.user_id == int(user_id),
             DailyReport.mentor_strategy == strategy.value,
             DailyReport.report_date == report_date,
         )
     )
+    return report
+
+
+async def _get_or_create_pending(
+    user_id: UserId,
+    strategy: MentorStrategy,
+    report_date: date,
+    session: AsyncSession,
+) -> tuple[DailyReport, bool]:
+    """LLM 없이 즉시 pending 행을 멱등 생성. 반환: (리포트, 이번 호출이 생성했는지).
+
+    무거운 시장요약·본문 생성은 _fill_report가 채운다. ON CONFLICT DO NOTHING +
+    RETURNING으로 정확히 한 호출만 created=True를 받으므로, '생성한 쪽'이 채움을
+    소유한다(중복 생성 방지). tier는 LLM이 아닌 컨텍스트 조회라 빠른 경로에 포함.
+    """
+    existing = await _select_report(user_id, strategy, report_date, session)
     if existing is not None:
         return existing, False
 
     ctx = await user_context.get_for_daily_report(user_id)
-    core = await _get_or_create_core(user_id, report_date, session)
-    news = await _load_core_news(core)
-    body = await _compose_body(strategy, ctx.tier, ctx.nickname, news, core.market_summary)
-    highlights = [{"news_id": int(n.id), "title": n.title} for n in news]
-
     inserted_id = await session.scalar(
         pg_insert(DailyReport)
         .values(
             user_id=int(user_id),
-            core_id=core.id,
+            core_id=None,
             report_date=report_date,
             mentor_strategy=strategy.value,
             tier=ctx.tier.value,
-            status="ready",
-            body=body,
-            highlights_json=json.dumps(highlights, ensure_ascii=False),
+            status="pending",
+            body=None,
+            highlights_json="[]",
         )
         .on_conflict_do_nothing(
             index_elements=["user_id", "mentor_strategy", "report_date"]
@@ -220,16 +234,98 @@ async def _get_or_create_report(
     )
     created = inserted_id is not None
 
-    report = await session.scalar(
-        select(DailyReport).where(
-            DailyReport.user_id == int(user_id),
-            DailyReport.mentor_strategy == strategy.value,
-            DailyReport.report_date == report_date,
-        )
-    )
+    report = await _select_report(user_id, strategy, report_date, session)
     if report is None:  # pragma: no cover — insert/conflict 직후엔 반드시 존재
-        raise RuntimeError("daily_report upsert로도 행이 없습니다")
+        raise RuntimeError("daily_report pending upsert로도 행이 없습니다")
     return report, created
+
+
+async def _fill_report(
+    user_id: UserId,
+    strategy: MentorStrategy,
+    report_date: date,
+    session: AsyncSession,
+) -> None:
+    """pending 행에 시장 코어 + 본문 + 하이라이트를 채우고 ready로 전환.
+
+    멱등: 행이 없거나 이미 ready면 no-op. 생성 소유자만 호출하는 전제라 경합
+    클레임은 두지 않는다. 커밋은 호출자가 담당.
+    """
+    report = await _select_report(user_id, strategy, report_date, session)
+    if report is None or report.status == "ready":
+        return
+
+    ctx = await user_context.get_for_daily_report(user_id)
+    core = await _get_or_create_core(user_id, report_date, session)
+    news = await _load_core_news(core)
+    body = await _compose_body(strategy, ctx.tier, ctx.nickname, news, core.market_summary)
+    highlights = [{"news_id": int(n.id), "title": n.title} for n in news]
+
+    report.core_id = core.id
+    report.body = body
+    report.highlights_json = json.dumps(highlights, ensure_ascii=False)
+    report.status = "ready"
+
+
+async def _finalize_fallback(
+    user_id: UserId,
+    strategy: MentorStrategy,
+    report_date: date,
+) -> None:
+    """채움이 예외로 끝났을 때 pending에 갇히지 않게 폴백 본문으로 ready 마감."""
+    try:
+        async with SessionLocal() as session:
+            report = await _select_report(user_id, strategy, report_date, session)
+            if report is None or report.status == "ready":
+                return
+            try:
+                nickname = (await user_context.get_for_daily_report(user_id)).nickname
+            except Exception:  # noqa: BLE001 — 컨텍스트 실패해도 마감은 해야 함
+                nickname = "투자자"
+            report.body = _fallback_body(nickname, [], None)
+            report.status = "ready"
+            await session.commit()
+    except Exception:  # noqa: BLE001 — 폴백 마감마저 실패하면 로그만 남기고 포기
+        logger.exception(
+            "daily_report.finalize_fallback_failed",
+            extra={"user_id": user_id, "strategy": strategy.value},
+        )
+
+
+async def _fill_report_bg(
+    user_id: UserId,
+    strategy: MentorStrategy,
+    report_date: date,
+) -> None:
+    """응답 이후 별도 태스크로 본문을 채운다(lazy 진입 지연 제거)."""
+    try:
+        async with SessionLocal() as session:
+            await _fill_report(user_id, strategy, report_date, session)
+            await session.commit()
+        logger.info(
+            "daily_report.bg_filled",
+            extra={"user_id": user_id, "strategy": strategy.value},
+        )
+    except Exception:  # noqa: BLE001 — 어떤 오류여도 행이 pending에 갇히지 않게 마감
+        logger.exception(
+            "daily_report.bg_fill_failed",
+            extra={"user_id": user_id, "strategy": strategy.value},
+        )
+        await _finalize_fallback(user_id, strategy, report_date)
+
+
+def _schedule_fill(
+    user_id: UserId,
+    strategy: MentorStrategy,
+    report_date: date,
+) -> None:
+    """백그라운드 채움 태스크 등록. 레퍼런스를 잡아 GC 취소를 막는다."""
+    task = asyncio.create_task(
+        _fill_report_bg(user_id, strategy, report_date),
+        name=f"daily_report_fill_{int(user_id)}_{strategy.value}_{report_date.isoformat()}",
+    )
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
 
 
 # ----------------------------------------------------------------------
@@ -260,10 +356,18 @@ async def get_or_create_today_report(
     user_id: UserId,
     strategy: MentorStrategy,
 ) -> DailyReport:
-    """그날 그 멘토(전략) 리포트 get-or-create. Phase 3 리더/라우터 진입점."""
+    """그날 그 멘토(전략) 리포트 get-or-create. 리더/라우터(lazy) 진입점.
+
+    진입 지연을 없애려고 LLM 없이 pending 행만 즉시 만들어 반환하고, 본문 생성은
+    백그라운드 태스크에 위임한다(status가 ready로 바뀔 때까지 클라이언트는 스켈레톤
+    표시 후 폴링). 이미 있으면 그대로 반환(pending이면 진행 중인 채움을 기다린다).
+    """
+    report_date = _today()
     async with SessionLocal() as session:
-        report, _ = await _get_or_create_report(user_id, strategy, _today(), session)
+        report, created = await _get_or_create_pending(user_id, strategy, report_date, session)
         await session.commit()
+    if created:
+        _schedule_fill(user_id, strategy, report_date)
     return report
 
 
@@ -294,7 +398,11 @@ async def generate_for_user(user_id: UserId) -> None:
     strategy = await resolve_strategy(user_id)
 
     async with SessionLocal() as session:
-        report, created = await _get_or_create_report(user_id, strategy, report_date, session)
+        report, created = await _get_or_create_pending(user_id, strategy, report_date, session)
+        # cron pre-warm은 리스너 태스크에서 실행되므로 인라인으로 끝까지 채워
+        # ready 상태로 만든 뒤 푸시한다(사용자엔 ready 리포트만 알림).
+        if created:
+            await _fill_report(user_id, strategy, report_date, session)
         await session.commit()
 
     if not created:
