@@ -20,6 +20,23 @@ from core.config import settings
 from core.db import Base
 from core.market_data.models import MarketEntity, MarketNewsItem  # noqa: E402, F401
 from core.push.models import DeviceToken  # noqa: E402, F401
+from features.content.models import (  # noqa: E402, F401
+    ArticleKeyword,
+    Industry,
+    IndustryKeyword,
+    KnowledgeChunk,
+    MasterKeyword,
+    MasterKeywordCompany,
+    NewsArticle,
+    NewsSource,
+    PipelineRun,
+    Scrap,
+    UserKeyword,
+)
+from features.daily_report.models import (  # noqa: E402, F401
+    DailyReport,
+    DailyReportCore,
+)
 from features.debate.models import DebateMessage, DebateSession  # noqa: E402, F401
 from features.growth.models import (  # noqa: E402, F401
     ConceptMastery,
@@ -34,20 +51,6 @@ from features.learning.models import (  # noqa: E402, F401
 from features.onboarding.models import (  # noqa: E402, F401
     OnboardingSurveyAnswer,
     UserProfile,
-)
-
-from features.content.models import (  # noqa: E402, F401
-    ArticleKeyword,
-    Industry,
-    IndustryKeyword,
-    KnowledgeChunk,
-    MasterKeyword,
-    MasterKeywordCompany,
-    NewsArticle,
-    NewsSource,
-    PipelineRun,
-    Scrap,
-    UserKeyword,
 )
 
 config = context.config
