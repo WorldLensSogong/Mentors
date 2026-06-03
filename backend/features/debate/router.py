@@ -37,6 +37,7 @@ from core.exceptions import (
     ForbiddenError,
     NotFoundError,
 )
+from core.read_services import NewsRef, content_reader
 from core.user_context import user_context
 from core.vector_store import Document
 from features.debate import service as debate_service
@@ -471,6 +472,9 @@ async def _retrieve_context(topic: str) -> RAGContext:
         pass
 
     if len(documents) < 2:
+        documents.extend(await _search_content_news_documents(topic))
+
+    if len(documents) < 2:
         try:
             documents.extend(await _search_news_documents(topic))
         except ExternalServiceError:
@@ -484,6 +488,37 @@ async def _search_news_documents(topic: str) -> list[Document]:
     for query in _news_queries(topic):
         documents.extend(await news_search.search(query, top_k=2))
     return _filter_topic_documents(topic, _dedupe_documents(documents))[:5]
+
+
+async def _search_content_news_documents(topic: str) -> list[Document]:
+    try:
+        refs = await content_reader.search_news_for_topic(topic, _topic_keywords(topic), top_k=5)
+    except RuntimeError:
+        return []
+    except Exception:
+        logger.warning("debate.content_news_search_failed", exc_info=True)
+        return []
+    return _filter_topic_documents(
+        topic,
+        [_content_news_document(ref) for ref in refs],
+    )[:5]
+
+
+def _content_news_document(ref: NewsRef) -> Document:
+    summary = ref.summary or ""
+    text = f"{ref.title}. {summary}" if summary else ref.title
+    return Document(
+        id=f"content_news_{int(ref.id)}",
+        text=text,
+        metadata={
+            "article_id": int(ref.id),
+            "source": ref.source or "content-news",
+            "title": ref.title,
+            "url": ref.url,
+            "published_at": ref.published_at.isoformat(),
+            "keywords": ",".join(ref.keywords),
+        },
+    )
 
 
 async def _resolve_market_topic(raw_topic: str, db: AsyncSession) -> str | None:
@@ -823,8 +858,14 @@ def _canonical_company_name(topic: str) -> str:
         ("현대차", r"현대차"),
         ("네이버", r"네이버"),
         ("카카오", r"카카오"),
-        ("마이크로소프트", r"마이크로소프트|(?<![A-Za-z])microsoft(?![A-Za-z])|(?<![A-Za-z])msft(?![A-Za-z])"),
-        ("구글", r"구글|알파벳|(?<![A-Za-z])google(?![A-Za-z])|(?<![A-Za-z])googl?(?![A-Za-z])|(?<![A-Za-z])alphabet(?![A-Za-z])"),
+        (
+            "마이크로소프트",
+            r"마이크로소프트|(?<![A-Za-z])microsoft(?![A-Za-z])|(?<![A-Za-z])msft(?![A-Za-z])",
+        ),
+        (
+            "구글",
+            r"구글|알파벳|(?<![A-Za-z])google(?![A-Za-z])|(?<![A-Za-z])googl?(?![A-Za-z])|(?<![A-Za-z])alphabet(?![A-Za-z])",
+        ),
         ("메타", r"메타|(?<![A-Za-z])meta(?![A-Za-z])"),
         ("아마존", r"아마존|(?<![A-Za-z])amazon(?![A-Za-z])|(?<![A-Za-z])amzn(?![A-Za-z])"),
         ("AMD", r"(?<![A-Za-z])amd(?![A-Za-z])"),
@@ -1034,8 +1075,16 @@ def _fallback_extract_debate_topic(user_input: str) -> str:
     topic = re.sub(r"(떨어지|오르|올라가|내려가|흔들리)(고|는데|는\s*중인데)?", " ", topic)
     topic = re.sub(r"(사야|살까|매수해야)\s*(할까|하나|돼|되는지|괜찮을까)?", "투자", topic)
     topic = re.sub(r"(사도|매수해도|들어가도)\s*(될까|돼|되는지|괜찮을까)?", "투자", topic)
-    topic = re.sub(r"(팔아야|매도해야)\s*(할까|하나|될까|돼|되는지|하는지|괜찮을까|괜찮아)?", "매도 판단", topic)
-    topic = re.sub(r"장기(로)?\s*투자(해도|하면)?\s*(될까|돼|되는지|괜찮을까|괜찮아)?", "장기 투자", topic)
+    topic = re.sub(
+        r"(팔아야|매도해야)\s*(할까|하나|될까|돼|되는지|하는지|괜찮을까|괜찮아)?",
+        "매도 판단",
+        topic,
+    )
+    topic = re.sub(
+        r"장기(로)?\s*투자(해도|하면)?\s*(될까|돼|되는지|괜찮을까|괜찮아)?",
+        "장기 투자",
+        topic,
+    )
     topic = re.sub(r"투자(해도|하면)?\s*(될까|돼|되는지|괜찮을까|괜찮아)?", "투자", topic)
     topic = re.sub(
         r"(투자|매도 판단)(?=(?!할까|해도|하면|돼|되는지|괜찮)[A-Za-z가-힣0-9])",
@@ -1047,7 +1096,11 @@ def _fallback_extract_debate_topic(user_input: str) -> str:
         " ",
         topic,
     )
-    topic = re.sub(r"(어떻게\s*생각해|어떻게\s*해|어떡해|어때|괜찮을까|괜찮아|좋을까|알려줘|말해줘)", " ", topic)
+    topic = re.sub(
+        r"(어떻게\s*생각해|어떻게\s*해|어떡해|어때|괜찮을까|괜찮아|좋을까|알려줘|말해줘)",
+        " ",
+        topic,
+    )
     topic = re.sub(r"\s+", " ", topic).strip(" ,./;:，。")
     topic = re.sub(r"\s+(은|는|이|가|을|를|에|으로|로)$", "", topic)
     topic = re.sub(r"(영향|전망|리스크|전략)(은|는)$", r"\1", topic)
@@ -1067,7 +1120,9 @@ def _normalize_debate_topic(topic: str) -> str:
         return _normalize_theme_topic(compact)
     if topic_type != "macro":
         return compact
-    if "금리" in compact and "인하" in compact and ("영향" in compact or "증시" in compact or "주식시장" in compact):
+    if "금리" in compact and "인하" in compact and (
+        "영향" in compact or "증시" in compact or "주식시장" in compact
+    ):
         return "금리 인하가 주식시장과 기업가치에 미치는 영향"
     if "금리" in compact and ("상승" in compact or "인상" in compact) and (
         "영향" in compact or "증시" in compact or "주식시장" in compact
@@ -1081,7 +1136,9 @@ def _normalize_debate_topic(topic: str) -> str:
         "변화" in compact or "상승" in compact or "하락" in compact
     ):
         return "물가 변화가 금리와 성장주 밸류에이션에 미치는 영향"
-    if ("cpi" in lower_compact or "물가" in compact or "인플레이션" in compact) and "성장주" in compact:
+    if (
+        "cpi" in lower_compact or "물가" in compact or "인플레이션" in compact
+    ) and "성장주" in compact:
         return "물가 변화가 금리와 성장주 밸류에이션에 미치는 영향"
     if "유가" in compact or "원유" in compact:
         if "항공" in compact:

@@ -7,7 +7,7 @@ features/<동>/__init__.py에서 register_*() 호출로 코어에 등록한다.
 from datetime import date, datetime
 from typing import Any, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.contracts import ConceptId, MentorStrategy, NewsId, ReportId, Tier, UserId
 
@@ -17,6 +17,16 @@ class NewsRef(BaseModel):
     title: str
     url: str
     published_at: datetime
+    source: str | None = None
+    summary: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+
+
+class IndustryTopicRef(BaseModel):
+    industry: str
+    keyword: str
+    aliases: list[str] = Field(default_factory=list)
+    companies: list[str] = Field(default_factory=list)
 
 
 class ContentReader(Protocol):
@@ -25,6 +35,15 @@ class ContentReader(Protocol):
     async def get_today_news_for_user(self, user_id: UserId, top_k: int = 5) -> list[NewsRef]: ...
 
     async def get_news_by_id(self, news_id: NewsId) -> NewsRef | None: ...
+
+    async def find_industry_topic(self, topic: str) -> IndustryTopicRef | None: ...
+
+    async def search_news_for_topic(
+        self,
+        topic: str,
+        keywords: list[str],
+        top_k: int = 5,
+    ) -> list[NewsRef]: ...
 
 
 class GrowthReader(Protocol):
@@ -74,5 +93,6 @@ __all__ = [
     "DailyReportReader",
     "DailyReportRef",
     "GrowthReader",
+    "IndustryTopicRef",
     "NewsRef",
 ]

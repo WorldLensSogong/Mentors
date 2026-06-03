@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import or_, select
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.market_data.models import MarketEntity, MarketNewsItem
@@ -34,13 +34,12 @@ async def find_entity_match(db: AsyncSession, topic: str) -> MarketEntityMatch |
                 MarketEntity.symbol.ilike(like),
                 MarketEntity.name.ilike(like),
                 MarketEntity.name_en.ilike(like),
+                cast(MarketEntity.aliases, String).ilike(like),
+                cast(MarketEntity.themes, String).ilike(like),
             ]
         )
     result = await db.execute(select(MarketEntity).where(or_(*candidate_filters)).limit(50))
     candidates = list(result.scalars().all())
-    if not candidates:
-        result = await db.execute(select(MarketEntity).limit(200))
-        candidates = list(result.scalars().all())
 
     scored = [
         match
