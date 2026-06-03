@@ -45,6 +45,7 @@ import type {
   SubmitLearningQuizResponse,
   TierQuizCatalogResponse,
 } from '@/features/learning/types';
+import { stripMarkdown } from '@/features/report/markdown';
 import type { GrowthProgressResponse } from '@/features/growth/types';
 import { getGrowthProgress } from '@/features/growth/api';
 import { useUserStore } from '@/store/userStore';
@@ -567,7 +568,7 @@ export function MentorChatScreen() {
 
               {isOpenerReportReady && openerReport.body ? (
                 <Text style={styles.openerBody} numberOfLines={4}>
-                  {openerReport.body}
+                  {stripMarkdown(openerReport.body)}
                 </Text>
               ) : (
                 <View style={styles.openerSkeleton}>

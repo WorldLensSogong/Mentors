@@ -14,6 +14,8 @@ from core.db import SessionLocal
 from core.event_bus import event_bus
 from core.jobs import cron
 
+from .service import reap_stale_pending
+
 logger = logging.getLogger("daily_report.jobs")
 
 
@@ -29,3 +31,11 @@ async def dispatch_daily_reports() -> None:
     now = datetime.now(UTC)
     for uid in user_ids:
         await event_bus.publish(DailyReportRequestedEvent(user_id=uid, occurred_at=now))
+
+
+@cron("*/10 * * * *", id="daily_report_reap_pending")
+async def reap_pending_reports() -> None:
+    """10분마다 stuck pending 리포트를 재채움/폴백 마감 (bg-fill 중 프로세스 사망 복구)."""
+    reaped = await reap_stale_pending()
+    if reaped:
+        logger.info("daily_report.reap_tick", extra={"reaped": reaped})

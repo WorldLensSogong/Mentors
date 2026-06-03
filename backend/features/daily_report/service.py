@@ -14,7 +14,7 @@ boundary: cross-feature read는 user_context·core.read_services 만 사용 (ADR
 import asyncio
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -42,8 +42,15 @@ logger = logging.getLogger("daily_report.service")
 
 # KST는 DST가 없어 고정 UTC+9. zoneinfo/tzdata 의존 없이 '오늘(서울)'을 안전하게 계산.
 _KST = timezone(timedelta(hours=9))
-_NEWS_TOP_K = 3
+# 리포트 본문/하이라이트에 쓸 뉴스 개수. LLM 컨텍스트를 넓혀 더 구체적인 브리핑을
+# 유도한다(선별 품질 자체는 content 동 소관). 늘릴수록 입력 토큰 비용도 증가.
+_NEWS_TOP_K = 5
 _DEFAULT_STRATEGY = MentorStrategy.VALUE
+
+# stale-pending reaper: 이 시간보다 오래 pending인 행을 갇힌 것으로 보고 재채움/마감.
+# 정상 채움(수초)보다 훨씬 길게 잡아 진행 중인 fill을 오인하지 않는다.
+_STALE_PENDING_AFTER = timedelta(minutes=10)
+_REAP_BATCH = 50
 
 # 백그라운드 본문 채움 태스크 레퍼런스 유지(미보유 시 GC로 취소될 수 있음).
 _bg_tasks: set[asyncio.Task[None]] = set()
@@ -112,6 +119,7 @@ async def _compose_body(
     try:
         resp = await llm.chat(
             build_report_prompt(strategy, tier, nickname, news, market_summary),
+            use_case="content",
             max_tokens=1200,
             temperature=0.7,
         )
@@ -430,9 +438,51 @@ async def generate_for_user(user_id: UserId) -> None:
     )
 
 
+async def reap_stale_pending() -> int:
+    """오래(>임계값) pending에 갇힌 리포트를 재채움/폴백 마감. 반환: 처리 시도한 행 수.
+
+    bg-fill 도중 프로세스가 죽으면 _finalize_fallback(예외만 잡음)으로도 못 막아
+    그날 행이 pending에 갇힐 수 있다. 주기 cron이 이 reaper를 돌려 정리한다.
+
+    멱등: _fill_report_bg가 pending이면 채우고 ready면 no-op. 임계값이 정상 채움
+    시간(수초)보다 훨씬 길어 진행 중인 정상 fill은 건드리지 않는다.
+    """
+    cutoff = datetime.now(UTC) - _STALE_PENDING_AFTER
+    async with SessionLocal() as session:
+        rows = (
+            await session.execute(
+                select(
+                    DailyReport.user_id,
+                    DailyReport.mentor_strategy,
+                    DailyReport.report_date,
+                )
+                .where(DailyReport.status == "pending", DailyReport.created_at < cutoff)
+                .limit(_REAP_BATCH)
+            )
+        ).all()
+
+    reaped = 0
+    for user_id_raw, strategy_raw, report_date in rows:
+        try:
+            strategy = MentorStrategy(strategy_raw)
+        except ValueError:
+            logger.warning(
+                "daily_report.reap_unknown_strategy",
+                extra={"user_id": user_id_raw, "strategy": strategy_raw},
+            )
+            continue
+        await _fill_report_bg(UserId(user_id_raw), strategy, report_date)
+        reaped += 1
+
+    if reaped:
+        logger.info("daily_report.reaped_stale_pending", extra={"count": reaped})
+    return reaped
+
+
 __all__ = [
     "generate_for_user",
     "get_or_create_today_report",
     "get_today_report",
+    "reap_stale_pending",
     "resolve_strategy",
 ]

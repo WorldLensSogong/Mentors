@@ -5,6 +5,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '@/constants/colors';
 import type { AppStackParamList } from '@/navigation/types';
+import { ReportMarkdown } from '../markdown';
 
 type DailyReportDetailRouteProp = RouteProp<AppStackParamList, 'DailyReportDetail'>;
 
@@ -59,7 +60,7 @@ export function DailyReportDetailScreen() {
         <View style={styles.divider} />
 
         {isReady && report.body ? (
-          <Text style={styles.body}>{report.body}</Text>
+          <ReportMarkdown body={report.body} />
         ) : (
           <View style={styles.pendingBox}>
             <Text style={styles.pendingText}>리포트를 정리하고 있어요. 잠시 후 다시 확인해 주세요.</Text>
@@ -70,12 +71,28 @@ export function DailyReportDetailScreen() {
           <>
             <Text style={styles.sectionTitle}>오늘의 하이라이트</Text>
             <View style={styles.highlightColumn}>
-              {report.highlights.map((highlight, index) => (
-                <View key={`${highlight.news_id ?? 'highlight'}-${index}`} style={styles.highlightCard}>
-                  <Text style={styles.highlightIndex}>{index + 1}</Text>
-                  <Text style={styles.highlightTitle}>{highlight.title ?? '관련 뉴스'}</Text>
-                </View>
-              ))}
+              {report.highlights.map((highlight, index) => {
+                const newsId = typeof highlight.news_id === 'number' ? highlight.news_id : null;
+                return (
+                  <Pressable
+                    key={`${highlight.news_id ?? 'highlight'}-${index}`}
+                    disabled={newsId === null}
+                    onPress={() => {
+                      if (newsId !== null) {
+                        navigation.navigate('NewsDetail', { newsId });
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.highlightCard,
+                      pressed && newsId !== null && styles.highlightCardPressed,
+                    ]}
+                  >
+                    <Text style={styles.highlightIndex}>{index + 1}</Text>
+                    <Text style={styles.highlightTitle}>{highlight.title ?? '관련 뉴스'}</Text>
+                    {newsId !== null ? <Text style={styles.highlightChevron}>›</Text> : null}
+                  </Pressable>
+                );
+              })}
             </View>
           </>
         ) : null}
@@ -160,11 +177,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginVertical: 16,
   },
-  body: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 24,
-  },
   pendingBox: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -191,7 +203,7 @@ const styles = StyleSheet.create({
   },
   highlightCard: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -199,6 +211,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  highlightCardPressed: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  highlightChevron: {
+    color: colors.muted,
+    fontSize: 20,
+    fontWeight: '700',
   },
   highlightIndex: {
     color: colors.primary,
