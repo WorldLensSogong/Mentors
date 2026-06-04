@@ -28,3 +28,25 @@ export interface SubmitLearningQuizResponse {
   correct: boolean;
   explanation: string;
 }
+
+export interface DailyReportHighlight {
+  news_id?: number;
+  title?: string;
+  [key: string]: unknown;
+}
+
+export interface DailyReportCard {
+  id: number;
+  report_date: string;
+  mentor_strategy: string;
+  tier: string;
+  status: string;
+  body: string | null;
+  highlights: DailyReportHighlight[];
+}
+
+export interface TodayOpenerResponse {
+  first_today: boolean;
+  opener: string;
+  report: DailyReportCard;
+}

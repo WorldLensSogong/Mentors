@@ -14,7 +14,7 @@ boundary: cross-feature read는 user_context·core.read_services 만 사용 (ADR
 import asyncio
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -32,7 +32,7 @@ from core.db import SessionLocal
 from core.event_bus import event_bus
 from core.llm import llm
 from core.push import push
-from core.read_services import NewsRef, content_reader
+from core.read_services import ConceptRef, NewsRef, content_reader, learning_reader
 from core.user_context import user_context
 
 from .models import DailyReport, DailyReportCore
@@ -42,8 +42,15 @@ logger = logging.getLogger("daily_report.service")
 
 # KST는 DST가 없어 고정 UTC+9. zoneinfo/tzdata 의존 없이 '오늘(서울)'을 안전하게 계산.
 _KST = timezone(timedelta(hours=9))
-_NEWS_TOP_K = 3
+# 리포트 본문/하이라이트에 쓸 뉴스 개수. LLM 컨텍스트를 넓혀 더 구체적인 브리핑을
+# 유도한다(선별 품질 자체는 content 동 소관). 늘릴수록 입력 토큰 비용도 증가.
+_NEWS_TOP_K = 5
 _DEFAULT_STRATEGY = MentorStrategy.VALUE
+
+# stale-pending reaper: 이 시간보다 오래 pending인 행을 갇힌 것으로 보고 재채움/마감.
+# 정상 채움(수초)보다 훨씬 길게 잡아 진행 중인 fill을 오인하지 않는다.
+_STALE_PENDING_AFTER = timedelta(minutes=10)
+_REAP_BATCH = 50
 
 # 백그라운드 본문 채움 태스크 레퍼런스 유지(미보유 시 GC로 취소될 수 있음).
 _bg_tasks: set[asyncio.Task[None]] = set()
@@ -105,13 +112,19 @@ async def _compose_body(
     nickname: str,
     news: list[NewsRef],
     market_summary: str | None,
+    concept: ConceptRef | None = None,
 ) -> str:
-    """멘토 전략 렌즈 + 티어 깊이로 리포트 본문 생성. 실패/무키 시 템플릿 fallback."""
+    """멘토 전략 렌즈 + 티어 깊이로 리포트 본문 생성. 실패/무키 시 템플릿 fallback.
+
+    concept이 주어지면 '오늘의 개념'을 그 커리큘럼 개념으로 고정하고 멘토 질문에
+    trigger 키워드를 심는다(채팅 팔로우업 퀴즈 연결).
+    """
     if not llm.configured:
         return _fallback_body(nickname, news, market_summary)
     try:
         resp = await llm.chat(
-            build_report_prompt(strategy, tier, nickname, news, market_summary),
+            build_report_prompt(strategy, tier, nickname, news, market_summary, concept),
+            use_case="content",
             max_tokens=1200,
             temperature=0.7,
         )
@@ -139,6 +152,18 @@ async def _get_or_create_core(
         )
     )
     if existing is not None:
+        # 첫 생성 시 처리된 기사가 없어 빈 스냅샷으로 캐싱된 경우,
+        # 지금 다시 뉴스를 가져와 인-플레이스 업데이트한다.
+        # 이미 뉴스가 있으면 재시도하지 않아 멱등성을 유지한다.
+        if not json.loads(existing.news_ids_json or "[]"):
+            news = await content_reader.get_today_news_for_user(user_id, top_k=_NEWS_TOP_K)
+            if news:
+                existing.news_ids_json = json.dumps([int(n.id) for n in news])
+                existing.market_summary = await _summarize_market(news)
+                logger.info(
+                    "daily_report.core_news_backfilled",
+                    extra={"user_id": user_id, "count": len(news)},
+                )
         return existing
 
     news = await content_reader.get_today_news_for_user(user_id, top_k=_NEWS_TOP_K)
@@ -240,6 +265,18 @@ async def _get_or_create_pending(
     return report, created
 
 
+async def _resolve_today_concept(user_id: UserId, tier: Tier) -> ConceptRef | None:
+    """학습 동에서 진도순 '오늘의 개념'을 읽는다(ADR-014 경계, 읽기 DTO).
+
+    학습 동 미등록/조회 실패 시 None — 리포트는 자유 선택 폴백으로 계속 생성된다.
+    """
+    try:
+        return await learning_reader.get_today_concept(user_id, tier)
+    except Exception:  # noqa: BLE001 — 개념 조회 실패해도 리포트 생성은 막지 않는다
+        logger.warning("daily_report.today_concept_failed", extra={"user_id": user_id})
+        return None
+
+
 async def _fill_report(
     user_id: UserId,
     strategy: MentorStrategy,
@@ -258,7 +295,13 @@ async def _fill_report(
     ctx = await user_context.get_for_daily_report(user_id)
     core = await _get_or_create_core(user_id, report_date, session)
     news = await _load_core_news(core)
-    body = await _compose_body(strategy, ctx.tier, ctx.nickname, news, core.market_summary)
+    concept = await _resolve_today_concept(user_id, ctx.tier)
+    if concept is not None:
+        # 오늘의 학습 개념은 user×date 공통(코어)에 기록 — 멘토가 달라도 같은 개념.
+        core.today_concept_id = int(concept.id)
+    body = await _compose_body(
+        strategy, ctx.tier, ctx.nickname, news, core.market_summary, concept
+    )
     highlights = [{"news_id": int(n.id), "title": n.title} for n in news]
 
     report.core_id = core.id
@@ -430,9 +473,51 @@ async def generate_for_user(user_id: UserId) -> None:
     )
 
 
+async def reap_stale_pending() -> int:
+    """오래(>임계값) pending에 갇힌 리포트를 재채움/폴백 마감. 반환: 처리 시도한 행 수.
+
+    bg-fill 도중 프로세스가 죽으면 _finalize_fallback(예외만 잡음)으로도 못 막아
+    그날 행이 pending에 갇힐 수 있다. 주기 cron이 이 reaper를 돌려 정리한다.
+
+    멱등: _fill_report_bg가 pending이면 채우고 ready면 no-op. 임계값이 정상 채움
+    시간(수초)보다 훨씬 길어 진행 중인 정상 fill은 건드리지 않는다.
+    """
+    cutoff = datetime.now(UTC) - _STALE_PENDING_AFTER
+    async with SessionLocal() as session:
+        rows = (
+            await session.execute(
+                select(
+                    DailyReport.user_id,
+                    DailyReport.mentor_strategy,
+                    DailyReport.report_date,
+                )
+                .where(DailyReport.status == "pending", DailyReport.created_at < cutoff)
+                .limit(_REAP_BATCH)
+            )
+        ).all()
+
+    reaped = 0
+    for user_id_raw, strategy_raw, report_date in rows:
+        try:
+            strategy = MentorStrategy(strategy_raw)
+        except ValueError:
+            logger.warning(
+                "daily_report.reap_unknown_strategy",
+                extra={"user_id": user_id_raw, "strategy": strategy_raw},
+            )
+            continue
+        await _fill_report_bg(UserId(user_id_raw), strategy, report_date)
+        reaped += 1
+
+    if reaped:
+        logger.info("daily_report.reaped_stale_pending", extra={"count": reaped})
+    return reaped
+
+
 __all__ = [
     "generate_for_user",
     "get_or_create_today_report",
     "get_today_report",
+    "reap_stale_pending",
     "resolve_strategy",
 ]

@@ -38,12 +38,14 @@ import type { LearningChatFollowUpQuiz, LearningChatMentorId } from '@/features/
 import {
   getCurrentTierQuizzes,
   getLearningApiErrorMessage,
+  getTodayOpener,
   submitLearningQuiz,
 } from '@/features/learning/api';
 import type {
   SubmitLearningQuizResponse,
   TierQuizCatalogResponse,
 } from '@/features/learning/types';
+import { stripMarkdown } from '@/features/report/markdown';
 import type { GrowthProgressResponse } from '@/features/growth/types';
 import { getGrowthProgress } from '@/features/growth/api';
 import { useUserStore } from '@/store/userStore';
@@ -110,6 +112,10 @@ export function MentorChatScreen() {
   const [selectedQuizOptionIndex, setSelectedQuizOptionIndex] = useState<number | null>(null);
   const [quizResult, setQuizResult] = useState<SubmitLearningQuizResponse | null>(null);
   const [quizErrorMessage, setQuizErrorMessage] = useState<string | null>(null);
+  const [openerFirstTodayByMentor, setOpenerFirstTodayByMentor] = useState<Record<number, boolean>>(
+    {},
+  );
+  const [dismissedOpenerMentors, setDismissedOpenerMentors] = useState<Record<number, boolean>>({});
 
   const growthProgressQueryKey = buildGrowthProgressQueryKey(accessToken);
   const learningQuizzesQueryKey = ['learning-quizzes', accessToken] as const;
@@ -125,6 +131,8 @@ export function MentorChatScreen() {
   const growthProgress = growthQuery.data?.progress_percent ?? 0;
   const growthTier = growthQuery.data?.current_tier ?? 'T1';
   const growthWidth = `${Math.min(growthProgress, 100)}%` as `${number}%`;
+  const promotionEligible = growthQuery.data?.eligible_for_promotion === true;
+  const promotionNextTier = growthQuery.data?.next_tier ?? null;
 
   const sessionsQuery = useQuery({
     queryKey: ['learning-chat-sessions', accessToken],
@@ -146,6 +154,16 @@ export function MentorChatScreen() {
     queryFn: () => listLearningChatMessages(activeSessionId as number),
     enabled: Boolean(accessToken) && activeSessionId != null,
     retry: 0,
+  });
+
+  const openerQuery = useQuery({
+    queryKey: ['learning-today-opener', selectedMentorId, accessToken],
+    queryFn: () => getTodayOpener(selectedMentorId),
+    enabled: Boolean(accessToken),
+    retry: 0,
+    refetchOnWindowFocus: false,
+    refetchInterval: (query) =>
+      query.state.data && query.state.data.report.status !== 'ready' ? 2000 : false,
   });
 
   const createSessionMutation = useMutation({
@@ -217,6 +235,13 @@ export function MentorChatScreen() {
   });
 
   const selectedMentor = getLearningChatMentorById(selectedMentorId);
+  const openerReport = openerQuery.data?.report ?? null;
+  const showOpenerCard =
+    Boolean(accessToken) &&
+    openerFirstTodayByMentor[selectedMentorId] === true &&
+    !dismissedOpenerMentors[selectedMentorId] &&
+    openerReport != null;
+  const isOpenerReportReady = openerReport?.status === 'ready';
   const messageErrorMessage = messagesQuery.error
     ? getLearningChatApiErrorMessage(
         messagesQuery.error,
@@ -250,6 +275,18 @@ export function MentorChatScreen() {
       return mentorSessions[0].id;
     });
   }, [mentorSessions, route.params?.sessionId]);
+
+  useEffect(() => {
+    const data = openerQuery.data;
+    if (!data) {
+      return;
+    }
+    setOpenerFirstTodayByMentor((prev) =>
+      prev[selectedMentorId] === undefined
+        ? { ...prev, [selectedMentorId]: data.first_today }
+        : prev,
+    );
+  }, [openerQuery.data, selectedMentorId]);
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -451,6 +488,25 @@ export function MentorChatScreen() {
           </View>
         ) : null}
 
+        {/* 승급시험 응시 배너 — 이해도 80% 이상 충족 시 노출 */}
+        {accessToken && promotionEligible && promotionNextTier ? (
+          <Pressable
+            onPress={() => navigation.navigate('PromotionTest')}
+            style={({ pressed }) => [styles.promotionBanner, pressed && styles.pressed]}
+          >
+            <View style={styles.promotionBannerTextCol}>
+              <Text style={styles.promotionBannerEyebrow}>🎓 승급 자격 충족</Text>
+              <Text style={styles.promotionBannerTitle}>
+                {promotionNextTier} 승급시험에 응시할 수 있어요
+              </Text>
+              <Text style={styles.promotionBannerHint}>
+                이해도 {growthProgress}% 달성 — 지금 시험으로 다음 티어를 열어보세요.
+              </Text>
+            </View>
+            <Text style={styles.promotionBannerCta}>응시 →</Text>
+          </Pressable>
+        ) : null}
+
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -500,6 +556,76 @@ export function MentorChatScreen() {
                 : '새 세션으로 대화를 시작할 준비가 되어 있어요.'}
             </Text>
           </View>
+
+          {showOpenerCard && openerReport ? (
+            <View
+              style={[
+                styles.openerCard,
+                {
+                  borderColor: selectedMentor.accentColor,
+                  backgroundColor: selectedMentor.avatarTint,
+                },
+              ]}
+            >
+              <View style={styles.openerHeaderRow}>
+                <Text style={[styles.openerEyebrow, { color: selectedMentor.accentColor }]}>
+                  오늘의 일일 리포트
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    setDismissedOpenerMentors((prev) => ({ ...prev, [selectedMentorId]: true }))
+                  }
+                  style={({ pressed }) => [styles.openerCloseBtn, pressed && styles.pressed]}
+                >
+                  <Text style={styles.openerCloseText}>✕</Text>
+                </Pressable>
+              </View>
+
+              {openerQuery.data?.opener ? (
+                <Text style={[styles.openerGreeting, { color: selectedMentor.accentColor }]}>
+                  {openerQuery.data.opener}
+                </Text>
+              ) : null}
+
+              {isOpenerReportReady && openerReport.body ? (
+                <Text style={styles.openerBody} numberOfLines={4}>
+                  {stripMarkdown(openerReport.body)}
+                </Text>
+              ) : (
+                <View style={styles.openerSkeleton}>
+                  <View style={[styles.skeletonLine, styles.skeletonLineWide]} />
+                  <View style={styles.skeletonLine} />
+                  <View style={[styles.skeletonLine, styles.skeletonLineNarrow]} />
+                  <View style={styles.openerSkeletonHint}>
+                    <ActivityIndicator color={selectedMentor.accentColor} size="small" />
+                    <Text style={styles.openerSkeletonHintText}>
+                      오늘 리포트를 정리하고 있어요.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <Pressable
+                disabled={!isOpenerReportReady}
+                onPress={() =>
+                  navigation.navigate('DailyReportDetail', {
+                    report: openerReport,
+                    opener: openerQuery.data?.opener,
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.openerViewButton,
+                  { backgroundColor: selectedMentor.accentColor },
+                  !isOpenerReportReady && styles.openerViewButtonDisabled,
+                  pressed && isOpenerReportReady && styles.pressed,
+                ]}
+              >
+                <Text style={styles.openerViewButtonText}>
+                  {isOpenerReportReady ? '전체 리포트 보기' : '리포트 준비 중...'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           {sessionsQuery.isLoading && !activeSessionId ? (
             <View style={styles.stateCard}>
@@ -751,6 +877,43 @@ const styles = StyleSheet.create({
     width: 34,
     textAlign: 'right',
   },
+  promotionBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  promotionBannerTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  promotionBannerEyebrow: {
+    color: colors.surface,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    opacity: 0.92,
+  },
+  promotionBannerTitle: {
+    color: colors.surface,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  promotionBannerHint: {
+    color: colors.surface,
+    fontSize: 12,
+    lineHeight: 17,
+    opacity: 0.88,
+  },
+  promotionBannerCta: {
+    color: colors.surface,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   scrollContent: {
     gap: 16,
     paddingBottom: 20,
@@ -813,6 +976,84 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  openerCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+  openerHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  openerEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  openerCloseBtn: {
+    alignItems: 'center',
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  openerCloseText: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  openerGreeting: {
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 22,
+  },
+  openerBody: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  openerSkeleton: {
+    gap: 8,
+  },
+  skeletonLine: {
+    backgroundColor: colors.border,
+    borderRadius: 6,
+    height: 12,
+    width: '100%',
+  },
+  skeletonLineWide: {
+    width: '90%',
+  },
+  skeletonLineNarrow: {
+    width: '60%',
+  },
+  openerSkeletonHint: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  openerSkeletonHintText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  openerViewButton: {
+    alignItems: 'center',
+    borderRadius: 14,
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  openerViewButtonDisabled: {
+    opacity: 0.5,
+  },
+  openerViewButtonText: {
+    color: colors.surface,
+    fontSize: 14,
+    fontWeight: '800',
   },
   stateCard: {
     alignItems: 'center',
