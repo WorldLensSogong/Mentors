@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -253,8 +255,13 @@ export function ScrapScreen() {
         visible={creating}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => setCreating(false)}
       >
+        <KeyboardAvoidingView
+          style={styles.modalKav}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
         <Pressable style={styles.modalBackdrop} onPress={() => setCreating(false)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>새 폴더 만들기</Text>
@@ -290,6 +297,7 @@ export function ScrapScreen() {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 폴더 다중 삭제 시트 */}
@@ -568,6 +576,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   // ── 새 폴더 모달 ──
+  modalKav: {
+    flex: 1,
+  },
   modalBackdrop: {
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.4)',

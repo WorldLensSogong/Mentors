@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 
 interface BulkDeleteSheetProps<T> {
@@ -90,8 +90,16 @@ export function BulkDeleteSheet<T>({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      {/* 네이티브에서 Modal은 별도 뷰 계층 → SafeArea inset이 전달되지 않으므로
+          모달 내부에서 SafeAreaProvider를 다시 세운다(웹은 영향 없음). */}
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
         {/* 헤더 */}
         <View style={styles.header}>
           <Pressable onPress={onClose} style={styles.backBtn}>
@@ -172,14 +180,10 @@ export function BulkDeleteSheet<T>({
           </Pressable>
         </View>
 
-        {/* 삭제 확인 — 웹/네이티브 공통 동작 커스텀 모달 */}
-        <Modal
-          visible={confirmOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setConfirmOpen(false)}
-        >
-          <View style={styles.confirmBackdrop}>
+        {/* 삭제 확인 — 중첩 Modal은 iOS에서 안 뜨는 이슈가 있어 절대위치
+            오버레이로 구현(웹/네이티브 공통 동작). */}
+        {confirmOpen ? (
+          <View style={styles.confirmOverlay}>
             <View style={styles.confirmCard}>
               <Text style={styles.confirmTitle}>{noun} 삭제</Text>
               <Text style={styles.confirmMsg}>
@@ -214,8 +218,9 @@ export function BulkDeleteSheet<T>({
               </View>
             </View>
           </View>
-        </Modal>
-      </SafeAreaView>
+        ) : null}
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
@@ -363,13 +368,17 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.85,
   },
-  // ── 삭제 확인 모달 ──
-  confirmBackdrop: {
+  // ── 삭제 확인 오버레이 ──
+  confirmOverlay: {
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.45)',
-    flex: 1,
+    bottom: 0,
     justifyContent: 'center',
+    left: 0,
     paddingHorizontal: 32,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   confirmCard: {
     backgroundColor: colors.surface,
