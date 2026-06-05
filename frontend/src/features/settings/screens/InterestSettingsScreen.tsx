@@ -221,16 +221,34 @@ interface IndustryCardProps {
   industry: IndustryItem;
   selected: Set<string>;
   onToggle: (label: string) => void;
+  onToggleAll: (labels: string[], selectAll: boolean) => void;
 }
 
-function IndustryCard({ industry, selected, onToggle }: IndustryCardProps) {
+function IndustryCard({ industry, selected, onToggle, onToggleAll }: IndustryCardProps) {
+  const allLabels = industry.keywords.map((kw) => kw.label_ko);
+  const selectedCount = allLabels.filter((l) => selected.has(l)).length;
+  const allSelected = allLabels.length > 0 && selectedCount === allLabels.length;
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.iconBox}>
           <Text style={styles.iconText}>{iconFor(industry.name_ko)}</Text>
         </View>
-        <Text style={styles.cardTitle}>{industry.name_ko}</Text>
+        {/* 분야명 자체가 버튼 — 누르면 그 분야 전체를 관심사로 토글 */}
+        <Pressable
+          onPress={() => onToggleAll(allLabels, !allSelected)}
+          disabled={allLabels.length === 0}
+          style={({ pressed }) => [
+            styles.cardTitleBtn,
+            allSelected && styles.cardTitleBtnActive,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={[styles.cardTitle, allSelected && styles.cardTitleActive]}>
+            {industry.name_ko}
+          </Text>
+        </Pressable>
       </View>
       <View style={styles.pillGrid}>
         {industry.keywords.map((kw) => {
@@ -409,11 +427,50 @@ export function InterestSettingsScreen() {
     },
   });
 
+  // 초기화: 산업 풀에 속한 모든 관심 키워드를 삭제하고 선택을 비운다.
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const ids: number[] = [];
+      userKeywordsQuery.data?.items.forEach((uk) => {
+        if (industryLabelPool.has(uk.keyword)) ids.push(uk.id);
+      });
+      for (const id of ids) {
+        try {
+          await removeMyKeyword(id);
+        } catch (err) {
+          if (axios.isAxiosError(err) && err.response?.status === 404) continue;
+          throw err;
+        }
+      }
+      return ids.length;
+    },
+    onSuccess: async (count) => {
+      setSelected(new Set());
+      await queryClient.invalidateQueries({ queryKey: ['user-keywords', accessToken] });
+      setFeedback(`관심사 ${count}개를 초기화했어요.`);
+    },
+    onError: () => {
+      setFeedback('초기화에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    },
+  });
+
   function toggleLabel(label: string) {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(label)) next.delete(label);
       else next.add(label);
+      return next;
+    });
+  }
+
+  function toggleAllLabels(labels: string[], selectAll: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (selectAll) {
+        labels.forEach((l) => next.add(l));
+      } else {
+        labels.forEach((l) => next.delete(l));
+      }
       return next;
     });
   }
@@ -429,6 +486,11 @@ export function InterestSettingsScreen() {
     userKeywordsQuery.isLoading ||
     onboardingQuery.isLoading;
   const canSave = hydrated && hasChanges && !saveMutation.isPending;
+  const hasInterestKeywords = (userKeywordsQuery.data?.items ?? []).some((uk) =>
+    industryLabelPool.has(uk.keyword),
+  );
+  const canReset =
+    hydrated && !resetMutation.isPending && (selected.size > 0 || hasInterestKeywords);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -437,6 +499,19 @@ export function InterestSettingsScreen() {
           <Text style={styles.backArrow}>←</Text>
         </Pressable>
         <Text style={styles.headerTitle}>관심사 설정</Text>
+        <Pressable
+          onPress={() => canReset && resetMutation.mutate()}
+          disabled={!canReset}
+          style={({ pressed }) => [
+            styles.resetBtn,
+            !canReset && styles.resetBtnDisabled,
+            pressed && canReset && styles.saveBtnPressed,
+          ]}
+        >
+          <Text style={[styles.resetBtnText, !canReset && styles.resetBtnTextDisabled]}>
+            {resetMutation.isPending ? '초기화 중' : '초기화'}
+          </Text>
+        </Pressable>
         <Pressable
           onPress={() => canSave && saveMutation.mutate()}
           disabled={!canSave}
@@ -473,6 +548,7 @@ export function InterestSettingsScreen() {
               industry={ind}
               selected={selected}
               onToggle={toggleLabel}
+              onToggleAll={toggleAllLabels}
             />
           ))}
 
@@ -513,6 +589,19 @@ const styles = StyleSheet.create({
   saveBtnPressed: { opacity: 0.85 },
   saveBtnText: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   saveBtnTextDisabled: { color: colors.muted },
+  resetBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 12,
+  },
+  resetBtnDisabled: { opacity: 0.5 },
+  resetBtnText: { color: colors.rose, fontSize: 14, fontWeight: '700' },
+  resetBtnTextDisabled: { color: colors.muted },
   center: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40, gap: 12 },
   description: { color: colors.muted, fontSize: 13, lineHeight: 19 },
@@ -526,7 +615,7 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
   },
-  cardHeader: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  cardHeader: { alignItems: 'center', flexDirection: 'row', gap: 10, flexWrap: 'nowrap' },
   iconBox: {
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
@@ -537,6 +626,21 @@ const styles = StyleSheet.create({
   },
   iconText: { fontSize: 18 },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  cardTitleActive: { color: colors.surface },
+  cardTitleBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  cardTitleBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  pressed: { opacity: 0.8 },
   // Pill grid (wrap)
   pillGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {

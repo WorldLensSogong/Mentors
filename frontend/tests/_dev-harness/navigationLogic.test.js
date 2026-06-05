@@ -45,19 +45,19 @@ assert.equal(
 
 assert.deepEqual(
   buildMainTabBarMetrics({ bottomInset: 0, platform: 'android' }),
-  { height: 70, paddingBottom: 12, paddingTop: 10 },
+  { height: 56, paddingBottom: 4, paddingTop: 4 },
   'android tabs should keep a minimum gap above the system navigation bar',
 );
 
 assert.deepEqual(
   buildMainTabBarMetrics({ bottomInset: 24, platform: 'android' }),
-  { height: 82, paddingBottom: 24, paddingTop: 10 },
+  { height: 76, paddingBottom: 24, paddingTop: 4 },
   'android tabs should expand when the device reports a bottom inset',
 );
 
 assert.deepEqual(
   buildMainTabBarMetrics({ bottomInset: 34, platform: 'ios' }),
-  { height: 94, paddingBottom: 34, paddingTop: 10 },
+  { height: 94, paddingBottom: 34, paddingTop: 6 },
   'ios tabs should respect the home-indicator safe area',
 );
 

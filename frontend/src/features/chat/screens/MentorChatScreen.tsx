@@ -471,7 +471,7 @@ export function MentorChatScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -481,13 +481,13 @@ export function MentorChatScreen() {
           <Text style={styles.headerTitle}>멘토 채팅</Text>
           <View style={styles.headerActionRow}>
             <Pressable
-              onPress={() => {}}
+              onPress={() => navigation.navigate('Notifications')}
               style={({ pressed }) => [styles.headerIconBtn, pressed && styles.pressed]}
             >
               <Text style={styles.headerIconText}>🔔</Text>
             </Pressable>
             <Pressable
-              onPress={() => {}}
+              onPress={() => navigation.navigate('Scrap')}
               style={({ pressed }) => [styles.headerIconBtn, pressed && styles.pressed]}
             >
               <Text style={styles.headerIconText}>📌</Text>
@@ -779,17 +779,7 @@ export function MentorChatScreen() {
           {chatErrorMessage ? <Text style={styles.errorText}>{chatErrorMessage}</Text> : null}
         </ScrollView>
 
-        <View
-          style={[
-            styles.footer,
-            {
-              paddingBottom:
-                Platform.OS === 'ios'
-                  ? Math.max(insets.bottom, 24)
-                  : Math.max(insets.bottom, 16),
-            },
-          ]}
-        >
+        <View style={styles.footer}>
           <View style={styles.composer}>
             {/* 학습 기록 버튼 — 입력창 왼쪽 */}
             <Pressable
@@ -1289,7 +1279,8 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
     gap: 12,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+    // SafeAreaView가 하단 인셋을 이미 처리하므로 고정 패딩만 사용
+    paddingBottom: 12,
     paddingHorizontal: 16,
     paddingTop: 12,
   },

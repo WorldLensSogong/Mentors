@@ -1,12 +1,13 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '@/constants/colors';
 import type { AppStackParamList } from '@/navigation/types';
+import { useInAppNotificationStore } from '@/store/inAppNotificationStore';
 
 /**
  * 검색·검색결과·뉴스상세 화면 우측 상단에 공통으로 들어가는 아이콘 바.
- * 🔔 알림 · 📌 스크랩(→ ScrapScreen) · 👤 프로필(→ Settings).
+ * 🔔 알림(→ NotificationsScreen) · 📌 스크랩(→ ScrapScreen) · 👤 프로필(→ Settings).
  *
  * - `showProfile=false`로 프로필 아이콘을 숨길 수 있다(상세 화면 등).
  * - `showScrap=false`로 스크랩 아이콘을 숨긴다. ScrapScreen 자기 자신처럼
@@ -20,14 +21,16 @@ export function TopIconBar({
   showScrap?: boolean;
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const unreadCount = useInAppNotificationStore((s) => s.unreadCount);
 
   return (
     <View style={styles.iconRow}>
       <Pressable
-        onPress={() => Alert.alert('알림', '새로운 알림이 없습니다.')}
+        onPress={() => navigation.navigate('Notifications')}
         style={styles.iconBtn}
       >
         <Text style={styles.iconText}>🔔</Text>
+        {unreadCount > 0 ? <View style={styles.badge} /> : null}
       </Pressable>
       {showScrap ? (
         <Pressable onPress={() => navigation.navigate('Scrap')} style={styles.iconBtn}>
@@ -56,9 +59,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 40,
     justifyContent: 'center',
+    position: 'relative',
     width: 40,
   },
   iconText: {
     fontSize: 18,
+  },
+  badge: {
+    backgroundColor: '#E63946',
+    borderColor: colors.surface,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    height: 10,
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    width: 10,
   },
 });

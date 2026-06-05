@@ -50,10 +50,20 @@ export function MainTabNavigator() {
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.border,
+          // 바닥에 붙는 flush 바 — 마진 없이 전체 폭을 채워 주변 회색 여백 제거.
+          // 상단 모서리만 둥글게 + 상단 테두리로 깔끔하게 구분.
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          borderTopWidth: 1,
+          borderTopColor: '#C8CDC8',
+          borderLeftWidth: 0,
+          borderRightWidth: 0,
+          borderBottomWidth: 0,
           height: tabBarMetrics.height,
           paddingBottom: tabBarMetrics.paddingBottom,
           paddingTop: tabBarMetrics.paddingTop,
+          elevation: 0,                 // Android: 사각 그림자(회색 박스) 제거
+          shadowOpacity: 0,             // iOS: 그림자 제거
         },
         tabBarLabelStyle: {
           fontSize: 11,

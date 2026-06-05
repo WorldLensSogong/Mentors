@@ -28,7 +28,6 @@ import type {
 } from '@/features/explore/content/types';
 import { folderColorAt } from '@/features/scrap/components/ScrapFolderPicker';
 import { BulkDeleteSheet } from '@/features/scrap/components/BulkDeleteSheet';
-import { TopIconBar } from '@/features/explore/components/TopIconBar';
 import { formatRelativeTime } from '@/utils';
 
 export function ScrapScreen() {
@@ -126,8 +125,7 @@ export function ScrapScreen() {
           </Pressable>
           <Text style={styles.headerTitle}>스크랩</Text>
         </View>
-        {/* 이미 스크랩 화면이므로 📌(스크랩) 아이콘은 숨김 */}
-        <TopIconBar showScrap={false} />
+        {/* 스크랩 화면에서는 우측 상단 알림·프로필 아이콘을 노출하지 않음 */}
       </View>
 
       {isLoading ? (

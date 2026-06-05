@@ -63,7 +63,7 @@ export function ChatHistoryScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom']}>
+    <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backArrow}>←</Text>

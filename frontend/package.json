@@ -4,7 +4,7 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "dev": "expo start",
+    "dev": "node scripts/set-ip.js && expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
@@ -44,6 +44,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
+    "react-native-webview": "13.15.0",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

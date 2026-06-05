@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -12,9 +12,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useInAppNotificationStore } from '@/store/inAppNotificationStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { colors } from '@/constants/colors';
+import { openInAppBrowser } from '@/utils';
 import type { AppStackParamList, MainTabParamList } from '@/navigation/types';
 import { useUserStore } from '@/store/userStore';
 import {
@@ -82,8 +84,10 @@ export function DebateArenaScreen() {
   const navigation = useNavigation<NavigationProp<AppStackParamList>>();
   const route = useRoute<RouteProp<MainTabParamList, 'DebateArena'>>();
   const accessToken = useUserStore((state) => state.accessToken);
+  const unreadCount = useInAppNotificationStore((s) => s.unreadCount);
   const routeParams = route.params;
   const abortRef = useRef<AbortController | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const [arenaView, setArenaView] = useState<ArenaView>(routeParams?.replaySessionId ? 'debate' : 'setup');
   const [eligibility, setEligibility] = useState<DebateEligibility | null>(null);
   const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
@@ -142,6 +146,12 @@ export function DebateArenaScreen() {
           : '토론 진행 중';
 
   // 탭에 포커스될 때마다 eligibility를 재조회해서 승급 후에도 바로 반영
+  const scrollToInput = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let ignore = false;
@@ -201,6 +211,17 @@ export function DebateArenaScreen() {
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const eventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const subscription = Keyboard.addListener(eventName, () => {
+      scrollToInput();
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [scrollToInput]);
 
   useEffect(() => {
     const streamUrl = routeParams?.replayStreamUrl;
@@ -408,16 +429,18 @@ export function DebateArenaScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.header}>
-            <Pressable onPress={handleBackPress} style={styles.backButton}>
-              <Text style={styles.backButtonText}>‹</Text>
-            </Pressable>
             <View style={styles.headerTextWrap}>
               <Text style={styles.title}>
                 {arenaView === 'setup' ? '투기장' : resolvedTopic || topic}
@@ -425,10 +448,11 @@ export function DebateArenaScreen() {
               <Text style={styles.subtitle}>{headerSubtitle}</Text>
             </View>
             <View style={styles.headerIconRow}>
-              <Pressable onPress={() => Alert.alert('알림', '새로운 알림이 없습니다.')} style={styles.headerIconBtn}>
+              <Pressable onPress={() => navigation.navigate('Notifications')} style={styles.headerIconBtn}>
                 <Text style={styles.headerIconText}>🔔</Text>
+                {unreadCount > 0 ? <View style={styles.headerBadge} /> : null}
               </Pressable>
-              <Pressable onPress={() => Alert.alert('스크랩', '스크랩 페이지 개발 중입니다.')} style={styles.headerIconBtn}>
+              <Pressable onPress={() => navigation.navigate('Scrap')} style={styles.headerIconBtn}>
                 <Text style={styles.headerIconText}>📌</Text>
               </Pressable>
               <Pressable onPress={() => navigation.navigate('Settings')} style={styles.headerIconBtn}>
@@ -453,6 +477,7 @@ export function DebateArenaScreen() {
               onSelectPersona={handleSelectPersona}
               onSetActiveSlot={setActiveSlot}
               onSetTopic={setTopic}
+              onTopicFocus={scrollToInput}
             />
           ) : (
             <DebatePanel
@@ -506,6 +531,7 @@ function SetupPanel({
   onSelectPersona,
   onSetActiveSlot,
   onSetTopic,
+  onTopicFocus,
 }: {
   activeSlot: PlayerSlot | null;
   firstPersona: DebatePersona;
@@ -521,6 +547,7 @@ function SetupPanel({
   onSelectPersona: (personaId: string) => void;
   onSetActiveSlot: (slot: PlayerSlot | null) => void;
   onSetTopic: (topic: string) => void;
+  onTopicFocus: () => void;
 }) {
   return (
     <>
@@ -630,7 +657,12 @@ function SetupPanel({
         placeholderTextColor="#A4A9A5"
         style={styles.topicInput}
         value={topic}
-        onChangeText={onSetTopic}
+        onChangeText={(value) => {
+          onSetTopic(value);
+          onTopicFocus();
+        }}
+        onContentSizeChange={() => onTopicFocus()}
+        onFocus={onTopicFocus}
       />
       <View style={styles.topicChips}>
         {DEFAULT_TOPICS.map((sample) => (
@@ -702,11 +734,6 @@ function DebatePanel({
       </View>
 
       {isComplete ? <JudgmentPrompt /> : null}
-
-      <View style={styles.composerMock}>
-        <Text style={styles.composerPlaceholder}>질문이나 의견을 입력하세요</Text>
-        <View style={styles.composerButton} />
-      </View>
     </>
   );
 }
@@ -764,7 +791,7 @@ function EvidenceList({ documents }: { documents: DebateDocument[] }) {
           key={`${doc.id}-${doc.url}`}
           onPress={() => {
             if (doc.url) {
-              void Linking.openURL(doc.url);
+              void openInAppBrowser(doc.url);
             }
           }}
           style={styles.evidenceItem}
@@ -905,7 +932,8 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: 110,
+    // 플로팅 actionBar(~90px) + 하단 탭 간격 확보
+    paddingBottom: 130,
   },
   header: {
     alignItems: 'center',
@@ -943,10 +971,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 40,
     justifyContent: 'center',
+    position: 'relative',
     width: 40,
   },
   headerIconText: {
     fontSize: 18,
+  },
+  headerBadge: {
+    backgroundColor: '#E63946',
+    borderColor: colors.surface,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    height: 10,
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    width: 10,
   },
   title: {
     color: colors.text,
@@ -1332,43 +1372,26 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 8,
   },
-  composerMock: {
+  actionBar: {
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 99,
+    borderRadius: 20,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  composerPlaceholder: {
-    color: '#A4A9A5',
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  composerButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 18,
-    height: 36,
-    width: 36,
-  },
-  actionBar: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(248, 249, 248, 0.96)',
-    borderColor: colors.border,
-    borderTopWidth: 1,
-    bottom: 0,
+    bottom: 6,            // 하단 탭 바로 위에 살짝만 띄움
     flexDirection: 'row',
     gap: 10,
-    left: 0,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    left: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     position: 'absolute',
-    right: 0,
+    right: 12,
+    // 그림자
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
   },
   primaryAction: {
     alignItems: 'center',
