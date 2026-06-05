@@ -178,7 +178,7 @@ export function ScrapFolderPicker({ visible, draft, onClose, onScrapped }: Props
                     autoFocus
                     returnKeyType="done"
                     onSubmitEditing={handleCreateFolder}
-                    maxLength={20}
+                    maxLength={30}
                   />
                   <Pressable
                     onPress={handleCreateFolder}

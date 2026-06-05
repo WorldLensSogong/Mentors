@@ -29,17 +29,7 @@ import type {
 import { folderColorAt } from '@/features/scrap/components/ScrapFolderPicker';
 import { BulkDeleteSheet } from '@/features/scrap/components/BulkDeleteSheet';
 import { TopIconBar } from '@/features/explore/components/TopIconBar';
-
-function formatTime(value: string | null): string {
-  if (!value) return '';
-  const diff = Date.now() - new Date(value).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return '방금 전';
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
-}
+import { formatRelativeTime } from '@/utils';
 
 export function ScrapScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
@@ -98,10 +88,19 @@ export function ScrapScreen() {
   }
 
   async function handleDeleteFolders(ids: number[]) {
-    await Promise.all(ids.map((id) => removeScrapFolder(id)));
-    const idSet = new Set(ids);
-    setFolders((prev) => prev.filter((f) => !idSet.has(f.id)));
-    setRecent((prev) => prev.filter((s) => s.folder_id == null || !idSet.has(s.folder_id)));
+    // allSettled — 일부 실패해도 성공한 폴더는 UI에서 즉시 제거.
+    const results = await Promise.allSettled(ids.map((id) => removeScrapFolder(id)));
+    const okIds = new Set(ids.filter((_, i) => results[i].status === 'fulfilled'));
+    if (okIds.size > 0) {
+      setFolders((prev) => prev.filter((f) => !okIds.has(f.id)));
+      setRecent((prev) =>
+        prev.filter((s) => s.folder_id == null || !okIds.has(s.folder_id)),
+      );
+    }
+    // 하나라도 실패하면 시트가 에러를 표시하도록 throw (성공분은 이미 반영됨).
+    if (okIds.size !== ids.length) {
+      throw new Error('일부 폴더 삭제에 실패했습니다.');
+    }
   }
 
   function openScrap(item: ScrapResponse) {
@@ -127,7 +126,8 @@ export function ScrapScreen() {
           </Pressable>
           <Text style={styles.headerTitle}>스크랩</Text>
         </View>
-        <TopIconBar />
+        {/* 이미 스크랩 화면이므로 📌(스크랩) 아이콘은 숨김 */}
+        <TopIconBar showScrap={false} />
       </View>
 
       {isLoading ? (
@@ -238,7 +238,7 @@ export function ScrapScreen() {
                       {item.title}
                     </Text>
                     <Text style={styles.recentTime}>
-                      {formatTime(item.created_at)}
+                      {formatRelativeTime(item.created_at)}
                     </Text>
                   </View>
                 </Pressable>
@@ -265,7 +265,7 @@ export function ScrapScreen() {
               placeholder="폴더 이름 (예: 국내주식)"
               placeholderTextColor="#A4A9A5"
               autoFocus
-              maxLength={20}
+              maxLength={30}
               returnKeyType="done"
               onSubmitEditing={handleCreateFolder}
             />

@@ -165,9 +165,13 @@ class SearchResponse(BaseModel):
 
 
 class ScrapFolderCreateRequest(BaseModel):
-    """폴더 생성 요청. user_id는 get_current_user에서 주입."""
+    """폴더 생성 요청. user_id는 get_current_user에서 주입.
 
-    name: str = Field(min_length=1, max_length=100)
+    name 최대 길이는 프론트 TextInput(maxLength=30)과 맞춘다. DB 컬럼은
+    String(100)이라 여유가 있지만, 입력 검증은 30자로 통일.
+    """
+
+    name: str = Field(min_length=1, max_length=30)
     color: str | None = Field(default=None, max_length=20)
 
 

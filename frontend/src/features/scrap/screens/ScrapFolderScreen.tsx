@@ -21,6 +21,7 @@ import type { AppStackParamList } from '@/navigation/types';
 import { listMyScraps, removeScrap } from '@/features/explore/content/api';
 import type { ScrapResponse } from '@/features/explore/content/types';
 import { BulkDeleteSheet } from '@/features/scrap/components/BulkDeleteSheet';
+import { formatRelativeTime } from '@/utils';
 
 type RouteProps = RouteProp<AppStackParamList, 'ScrapFolder'>;
 
@@ -40,17 +41,6 @@ function bucketOf(createdAt: string): string {
 }
 
 const BUCKET_ORDER = ['오늘', '어제', '이번 주', '지난 달', '이전'];
-
-function formatTime(value: string | null): string {
-  if (!value) return '';
-  const diff = Date.now() - new Date(value).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return '방금 전';
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
-}
 
 export function ScrapFolderScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
@@ -87,9 +77,15 @@ export function ScrapFolderScreen() {
   }
 
   async function handleDeleteScraps(ids: number[]) {
-    await Promise.all(ids.map((id) => removeScrap(id)));
-    const idSet = new Set(ids);
-    setScraps((prev) => prev.filter((s) => !idSet.has(s.id)));
+    // allSettled — 일부 실패해도 성공한 스크랩은 UI에서 즉시 제거.
+    const results = await Promise.allSettled(ids.map((id) => removeScrap(id)));
+    const okIds = new Set(ids.filter((_, i) => results[i].status === 'fulfilled'));
+    if (okIds.size > 0) {
+      setScraps((prev) => prev.filter((s) => !okIds.has(s.id)));
+    }
+    if (okIds.size !== ids.length) {
+      throw new Error('일부 스크랩 삭제에 실패했습니다.');
+    }
   }
 
   // 시간대 버킷으로 그룹화 (최신순 유지)
@@ -168,7 +164,7 @@ export function ScrapFolderScreen() {
                       <Text numberOfLines={2} style={styles.cardTitle}>
                         {item.title}
                       </Text>
-                      <Text style={styles.cardTime}>{formatTime(item.created_at)}</Text>
+                      <Text style={styles.cardTime}>{formatRelativeTime(item.created_at)}</Text>
                     </View>
                   </Pressable>
                 ))}
@@ -205,7 +201,7 @@ export function ScrapFolderScreen() {
               <Text numberOfLines={2} style={styles.deleteRowTitle}>
                 {item.title}
               </Text>
-              <Text style={styles.deleteRowTime}>{formatTime(item.created_at)}</Text>
+              <Text style={styles.deleteRowTime}>{formatRelativeTime(item.created_at)}</Text>
             </View>
           </View>
         )}

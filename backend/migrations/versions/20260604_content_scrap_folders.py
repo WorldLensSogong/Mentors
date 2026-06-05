@@ -102,6 +102,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # ⚠️ 주의(데이터 손실): 이 마이그레이션 이후 생성된 스크랩 중 article_id가
+    # NULL인 행(실시간 RSS/live-topics 기사처럼 DB 미적재 기사를 스냅샷으로만
+    # 저장한 경우)은 article_id를 다시 NOT NULL로 되돌릴 수 없다. 그대로 두면
+    # ALTER COLUMN ... SET NOT NULL 이 실패하므로, downgrade는 이 행들을 먼저
+    # 삭제한 뒤 NOT NULL 제약을 복원한다. (업그레이드 이전 상태 = article_id가
+    # 항상 존재하던 스크랩만 남는 상태로 복귀.)
+    op.execute("DELETE FROM content_scraps WHERE article_id IS NULL")
     op.alter_column(
         "content_scraps", "article_id", existing_type=sa.Integer(), nullable=False
     )
