@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { colors } from '@/constants/colors';
+import { AppIcon } from '@/components/AppIcon';
 import {
   addMyKeyword,
   listIndustries,
@@ -25,6 +26,7 @@ import type { InterestTag } from '@/features/onboarding/types';
 import { buildLearningPreferencesPayload } from '@/features/settings/logic';
 import { useUserStore } from '@/store/userStore';
 import type { AppStackParamList } from '@/navigation/types';
+import { getIndustryIconName, type AppIconName } from '@/ui/iconTokens';
 
 type Nav = NativeStackNavigationProp<AppStackParamList, 'InterestSettings'>;
 
@@ -177,43 +179,8 @@ const MAPPED_INTEREST_POOL: Set<InterestTag> = new Set(
 );
 
 // 산업 카테고리 → 대표 아이콘 (한글명 매칭)
-const INDUSTRY_ICON: Record<string, string> = {
-  IT기술: '💻',
-  화학: '🧪',
-  화장품: '💄',
-  통신: '📡',
-  탄소저감: '🌱',
-  종이: '📄',
-  조선: '🚢',
-  전자부품: '🔌',
-  전력에너지: '⚡',
-  자동차: '🚗',
-  의류: '👗',
-  의료: '🏥',
-  음식료: '🍽️',
-  유통: '🛒',
-  원유: '🛢️',
-  운송: '🚚',
-  엔터테인먼트: '🎬',
-  스마트폰: '📱',
-  여행: '✈️',
-  수자원: '💧',
-  배터리: '🔋',
-  반도체: '💾',
-  방위산업물자: '🛡️',
-  생활용품: '🧴',
-  바이오: '🧬',
-  리츠: '🏢',
-  디스플레이: '🖥️',
-  기계: '⚙️',
-  농업: '🌾',
-  금융: '💵',
-  금속: '⛏️',
-  교육: '🎓',
-};
-
-function iconFor(name: string): string {
-  return INDUSTRY_ICON[name] ?? '📌';
+function iconFor(name: string): AppIconName {
+  return getIndustryIconName(name);
 }
 
 // ── Industry Card ─────────────────────────────────────
@@ -233,7 +200,7 @@ function IndustryCard({ industry, selected, onToggle, onToggleAll }: IndustryCar
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.iconBox}>
-          <Text style={styles.iconText}>{iconFor(industry.name_ko)}</Text>
+          <AppIcon color={colors.primary} name={iconFor(industry.name_ko)} size={22} />
         </View>
         {/* 분야명 자체가 버튼 — 누르면 그 분야 전체를 관심사로 토글 */}
         <Pressable

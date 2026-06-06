@@ -73,7 +73,8 @@ export default function App() {
         <SafeAreaProvider>
           <NavigationContainer linking={linking} theme={navTheme}>
             {USE_REAL_FRONTEND ? <RootNavigator /> : <HarnessNavigator />}
-            <StatusBar style="auto" />
+            {/* 배경이 항상 밝으므로 어두운 글자로 고정 (auto는 다크모드 기기에서 흰 글자가 됨) */}
+            <StatusBar style="dark" />
           </NavigationContainer>
         </SafeAreaProvider>
       </QueryClientProvider>

@@ -11,6 +11,17 @@ import { colors } from '@/constants/colors';
 export function stripUrlsFromText(text: string | null | undefined): string | null {
   if (!text) return null;
   let s = text;
+  // HTML 태그 제거 — '<' 뒤가 글자/슬래시/!일 때만(실제 태그). '수익률 <10%' 같은
+  // 한글 부등호는 보존(이전 회귀 방지). RSS content의 <a href> 링크 등을 정리한다.
+  s = s.replace(/<\/?[a-zA-Z!][^>]*>/g, ' ');
+  // 흔한 HTML 엔티티 디코드
+  s = s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#3?9;/gi, "'");
   // 마크다운 링크 [라벨](url) → 라벨만 유지
   s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
   // 원시 URL 제거 (http/https, www)

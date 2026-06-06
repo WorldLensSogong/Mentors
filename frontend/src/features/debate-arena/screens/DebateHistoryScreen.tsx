@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
+import { IconLabel } from '@/components/AppIcon';
 import { listDebateSessions } from '../api';
 import { useUserStore } from '@/store/userStore';
 import type { AppStackParamList } from '@/navigation/types';
@@ -106,7 +107,14 @@ export function DebateHistoryScreen() {
                 <Text style={styles.historyTopic}>{session.topic}</Text>
                 <View style={styles.historyFooter}>
                   <Text style={styles.historyStatus}>토론 완료</Text>
-                  <Text style={styles.historyOpen}>다시 보기 ↗</Text>
+                  <IconLabel
+                    color={colors.primary}
+                    icon="open-in-new"
+                    iconColor={colors.primary}
+                    iconSize={14}
+                    label="다시 보기"
+                    textStyle={styles.historyOpen}
+                  />
                 </View>
               </Pressable>
             ))

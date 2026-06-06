@@ -14,6 +14,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '@/constants/colors';
+import { IconLabel } from '@/components/AppIcon';
 import type { AppStackParamList } from '@/navigation/types';
 import { getNewsDetail, listMyScraps, searchNews } from '@/features/explore/content/api';
 import type { NewsArticleResponse, SearchHit } from '@/features/explore/content/types';
@@ -133,9 +134,14 @@ export function NewsDetailScreen() {
             pressed && styles.pressed,
           ]}
         >
-          <Text style={[styles.scrapBtnText, isScrapped && styles.scrapBtnTextSaved]}>
-            {isScrapped ? '✓ 저장됨' : '🔖 스크랩'}
-          </Text>
+          <IconLabel
+            color={isScrapped ? colors.primary : colors.text}
+            icon={isScrapped ? 'check-circle' : 'bookmark'}
+            iconColor={isScrapped ? colors.primary : colors.text}
+            iconSize={15}
+            label={isScrapped ? '저장됨' : '스크랩'}
+            textStyle={[styles.scrapBtnText, isScrapped && styles.scrapBtnTextSaved]}
+          />
         </Pressable>
       </View>
 
@@ -197,7 +203,14 @@ export function NewsDetailScreen() {
           onPress={handleOriginalPress}
           style={({ pressed }) => [styles.originalBtn, pressed && styles.pressed]}
         >
-          <Text style={styles.originalBtnText}>원본 기사 보기</Text>
+          <IconLabel
+            color={colors.primary}
+            icon="open-in-new"
+            iconColor={colors.primary}
+            iconSize={16}
+            label="원본 기사 보기"
+            textStyle={styles.originalBtnText}
+          />
         </Pressable>
 
         {/* 관련 기사 (시맨틱 검색 결과) */}

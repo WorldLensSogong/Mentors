@@ -9,18 +9,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
+import { AppIcon } from '@/components/AppIcon';
 import {
   useInAppNotificationStore,
   type InAppNotification,
 } from '@/store/inAppNotificationStore';
 import type { AppStackParamList } from '@/navigation/types';
+import { getNotificationTypeIconName } from '@/ui/iconTokens';
 
 type Nav = NavigationProp<AppStackParamList>;
-
-const TYPE_ICON: Record<string, string> = {
-  daily_report: '📊',
-  promotion_test: '🎓',
-};
 
 const TYPE_COLOR: Record<string, string> = {
   daily_report: colors.primary,
@@ -58,7 +55,11 @@ function NotificationCard({
       ]}
     >
       <View style={[styles.iconCircle, { backgroundColor: TYPE_COLOR[item.type] + '20' }]}>
-        <Text style={styles.iconText}>{TYPE_ICON[item.type] ?? '🔔'}</Text>
+        <AppIcon
+          color={TYPE_COLOR[item.type] ?? colors.primary}
+          name={getNotificationTypeIconName(item.type)}
+          size={22}
+        />
       </View>
       <View style={styles.cardBody}>
         <View style={styles.cardTop}>
@@ -112,7 +113,7 @@ export function NotificationsScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {notifications.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyIcon}>🔕</Text>
+            <AppIcon color="#A3ACA5" name="bell-off-outline" size={40} />
             <Text style={styles.emptyTitle}>새로운 알림이 없어요</Text>
             <Text style={styles.emptyDesc}>
               일일 리포트 도착, 승급시험 가능 등 주요 이벤트를 여기서 확인할 수 있어요.
@@ -165,7 +166,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
-  iconText: { fontSize: 20 },
   cardBody: { flex: 1, gap: 3 },
   cardTop: { alignItems: 'center', flexDirection: 'row', gap: 6 },
   cardTitle: { color: colors.text, flex: 1, fontSize: 15, fontWeight: '700' },
@@ -183,7 +183,6 @@ const styles = StyleSheet.create({
     marginTop: 60,
     paddingHorizontal: 32,
   },
-  emptyIcon: { fontSize: 40 },
   emptyTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
   emptyDesc: { color: colors.muted, fontSize: 13, lineHeight: 19, textAlign: 'center' },
 });

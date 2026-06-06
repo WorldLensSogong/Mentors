@@ -11,6 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { colors } from '@/constants/colors';
+import { AppIcon } from '@/components/AppIcon';
 import type { AppStackParamList } from '@/navigation/types';
 import { openInAppBrowser } from '@/utils';
 
@@ -46,7 +47,7 @@ export function InAppBrowserScreen() {
           style={styles.iconBtn}
           hitSlop={8}
         >
-          <Text style={styles.openExternalIcon}>↗</Text>
+          <AppIcon color={colors.primary} name="open-in-new" size={20} />
         </Pressable>
       </View>
 
@@ -105,11 +106,6 @@ const styles = StyleSheet.create({
   backArrow: {
     color: colors.text,
     fontSize: 22,
-  },
-  openExternalIcon: {
-    color: colors.primary,
-    fontSize: 20,
-    fontWeight: '800',
   },
   headerTitle: {
     color: colors.text,

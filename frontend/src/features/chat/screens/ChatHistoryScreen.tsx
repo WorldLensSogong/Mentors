@@ -4,6 +4,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
+import { IconLabel } from '@/components/AppIcon';
 import {
   getLearningChatApiErrorMessage,
   listLearningChatMessages,
@@ -128,7 +129,14 @@ export function ChatHistoryScreen() {
                 <Text style={styles.historyPreview}>{card.preview}</Text>
                 <View style={styles.historyFooter}>
                   <Text style={styles.historyCount}>메시지 {card.messageCount}개</Text>
-                  <Text style={styles.historyOpen}>열기 ↗</Text>
+                  <IconLabel
+                    color={colors.primary}
+                    icon="open-in-new"
+                    iconColor={colors.primary}
+                    iconSize={14}
+                    label="열기"
+                    textStyle={styles.historyOpen}
+                  />
                 </View>
               </Pressable>
             ))

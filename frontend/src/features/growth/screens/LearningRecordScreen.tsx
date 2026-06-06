@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
+import { AppIcon, IconLabel } from '@/components/AppIcon';
 import { getGrowthApiErrorMessage, getGrowthProgress } from '@/features/growth/api';
 import type { GrowthProgressResponse } from '@/features/growth/types';
 import {
@@ -308,13 +309,20 @@ function ArenaTab({
           <View style={styles.arenaHeader}>
             <View style={styles.arenaVsRow}>
               <Text style={styles.arenaMentor}>{session.persona_a_name}</Text>
-              <Text style={styles.arenaVs}>⚔️</Text>
+              <AppIcon color={colors.primary} name="sword-cross" size={18} />
               <Text style={styles.arenaMentor}>{session.persona_b_name}</Text>
             </View>
             <Text style={styles.reportDate}>{formatArenaDate(session.completed_at)}</Text>
           </View>
           <Text style={styles.arenaTopic} numberOfLines={2}>{session.topic}</Text>
-          <Text style={styles.arenaLink}>기록 보기 →</Text>
+          <IconLabel
+            color={colors.primary}
+            icon="open-in-new"
+            iconColor={colors.primary}
+            iconSize={14}
+            label="기록 보기"
+            textStyle={styles.arenaLink}
+          />
         </Pressable>
       ))}
     </>

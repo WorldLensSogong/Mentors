@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '@/constants/colors';
+import { AppIcon } from '@/components/AppIcon';
 import type { AppStackParamList } from '@/navigation/types';
 import {
   createScrapFolder,
@@ -171,7 +172,7 @@ export function ScrapScreen() {
                     { backgroundColor: folder.color ?? folderColorAt(idx) },
                   ]}
                 >
-                  <Text style={styles.folderIcon}>🗂️</Text>
+                  <AppIcon color={colors.surface} name="folder" size={24} />
                 </View>
                 <Text numberOfLines={1} style={styles.folderName}>
                   {folder.name}
@@ -202,7 +203,7 @@ export function ScrapScreen() {
             <View style={styles.emptyBox}>
               <Text style={styles.emptyTitle}>아직 스크랩한 기사가 없어요</Text>
               <Text style={styles.emptyDesc}>
-                뉴스 상세에서 🔖 버튼을 눌러 폴더에 저장해 보세요.
+                뉴스 상세에서 스크랩 버튼을 눌러 폴더에 저장해 보세요.
               </Text>
             </View>
           ) : (
@@ -221,7 +222,7 @@ export function ScrapScreen() {
                     />
                   ) : (
                     <View style={[styles.recentThumb, styles.recentThumbEmpty]}>
-                      <Text style={styles.recentThumbIcon}>📰</Text>
+                      <AppIcon color="#8B9890" name="newspaper-variant-outline" size={22} />
                     </View>
                   )}
                   <View style={styles.recentBody}>
@@ -308,7 +309,7 @@ export function ScrapScreen() {
                 { backgroundColor: folder.color ?? colors.primarySoft },
               ]}
             >
-              <Text style={styles.deleteRowIcon}>🗂️</Text>
+              <AppIcon color={colors.surface} name="folder" size={18} />
             </View>
             <View style={styles.deleteRowInfo}>
               <Text style={styles.deleteRowName}>{folder.name}</Text>

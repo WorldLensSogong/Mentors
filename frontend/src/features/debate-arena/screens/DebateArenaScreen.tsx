@@ -12,10 +12,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useInAppNotificationStore } from '@/store/inAppNotificationStore';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, type NavigationProp, type RouteProp } from '@react-navigation/native';
 import { colors } from '@/constants/colors';
+import { AppIcon } from '@/components/AppIcon';
+import { TopIconBar } from '@/features/explore/components/TopIconBar';
 import { openInAppBrowser } from '@/utils';
 import type { AppStackParamList, MainTabParamList } from '@/navigation/types';
 import { useUserStore } from '@/store/userStore';
@@ -84,7 +85,6 @@ export function DebateArenaScreen() {
   const navigation = useNavigation<NavigationProp<AppStackParamList>>();
   const route = useRoute<RouteProp<MainTabParamList, 'DebateArena'>>();
   const accessToken = useUserStore((state) => state.accessToken);
-  const unreadCount = useInAppNotificationStore((s) => s.unreadCount);
   const routeParams = route.params;
   const abortRef = useRef<AbortController | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
@@ -112,8 +112,11 @@ export function DebateArenaScreen() {
   const isAllowed = eligibility?.allowed ?? false;
   const canStart = Boolean(topic.trim()) && firstPersona.id !== secondPersona.id && isAllowed;
   const isBusy = status === 'loading' || status === 'streaming';
+  // 중단 후 멈춘 상태: 토론 화면이지만 진행 중이 아님(idle)
+  const isStopped = arenaView === 'debate' && status === 'idle';
   const isPrimaryActionDisabled =
-    isBusy || (arenaView === 'debate' && status === 'done' ? false : !canStart);
+    isBusy ||
+    (arenaView === 'debate' && (status === 'done' || isStopped) ? false : !canStart);
 
   const progress = useMemo(() => {
     if (status === 'done') {
@@ -140,15 +143,23 @@ export function DebateArenaScreen() {
     arenaView === 'setup'
       ? '투기장 입장하기'
       : status === 'done'
-        ? '설정으로 돌아가기'
+        ? '나가기'
         : status === 'error'
           ? '다시 시도하기'
-          : '토론 진행 중';
+          : isStopped
+            ? '다시 진행하기'
+            : '토론 진행 중';
 
   // 탭에 포커스될 때마다 eligibility를 재조회해서 승급 후에도 바로 반영
   const scrollToInput = useCallback((animated = true) => {
+    // 키보드가 올라오는 동안 여러 번 스크롤해서 입력창이 항상 보이도록 함
     requestAnimationFrame(() => {
       scrollViewRef.current?.scrollToEnd({ animated });
+    });
+    [120, 280].forEach((delay) => {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated });
+      }, delay);
     });
   }, []);
 
@@ -430,8 +441,18 @@ export function DebateArenaScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      {/* 고정 헤더 — 탐색/채팅 화면처럼 본문과 분리 */}
+      <View style={styles.header}>
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.title}>
+            {'투기장'}
+          </Text>
+        </View>
+        <TopIconBar />
+      </View>
+
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         style={styles.keyboardView}
       >
         <ScrollView
@@ -440,26 +461,8 @@ export function DebateArenaScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <View style={styles.headerTextWrap}>
-              <Text style={styles.title}>
-                {arenaView === 'setup' ? '투기장' : resolvedTopic || topic}
-              </Text>
-              <Text style={styles.subtitle}>{headerSubtitle}</Text>
-            </View>
-            <View style={styles.headerIconRow}>
-              <Pressable onPress={() => navigation.navigate('Notifications')} style={styles.headerIconBtn}>
-                <Text style={styles.headerIconText}>🔔</Text>
-                {unreadCount > 0 ? <View style={styles.headerBadge} /> : null}
-              </Pressable>
-              <Pressable onPress={() => navigation.navigate('Scrap')} style={styles.headerIconBtn}>
-                <Text style={styles.headerIconText}>📌</Text>
-              </Pressable>
-              <Pressable onPress={() => navigation.navigate('Settings')} style={styles.headerIconBtn}>
-                <Text style={styles.headerIconText}>👤</Text>
-              </Pressable>
-            </View>
-          </View>
+          {/* 본문 맨 위 안내 문구 */}
+          <Text style={styles.subtitle}>{headerSubtitle}</Text>
 
           {arenaView === 'setup' ? (
             <SetupPanel
@@ -490,27 +493,32 @@ export function DebateArenaScreen() {
               turns={turns}
             />
           )}
-        </ScrollView>
 
-        <View style={styles.actionBar}>
-          {isBusy ? (
-            <Pressable onPress={handleStopDebate} style={styles.secondaryAction}>
-              <Text style={styles.secondaryActionText}>중단</Text>
+          {/* 입장하기 버튼 — 스크롤 콘텐츠 맨 아래에 위치(끝까지 내리면 노출) */}
+          <View style={styles.actionBar}>
+            {isBusy ? (
+              <Pressable onPress={handleStopDebate} style={styles.secondaryAction}>
+                <Text style={styles.secondaryActionText}>중단</Text>
+              </Pressable>
+            ) : isStopped ? (
+              <Pressable onPress={handleBackPress} style={styles.secondaryAction}>
+                <Text style={styles.secondaryActionText}>나가기</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              disabled={isPrimaryActionDisabled}
+              onPress={handlePrimaryAction}
+              style={[
+                styles.primaryAction,
+                isPrimaryActionDisabled && styles.primaryActionDisabled,
+              ]}
+            >
+              <Text style={styles.primaryActionText}>
+                {primaryActionLabel}
+              </Text>
             </Pressable>
-          ) : null}
-          <Pressable
-            disabled={isPrimaryActionDisabled}
-            onPress={handlePrimaryAction}
-            style={[
-              styles.primaryAction,
-              isPrimaryActionDisabled && styles.primaryActionDisabled,
-            ]}
-          >
-            <Text style={styles.primaryActionText}>
-              {primaryActionLabel}
-            </Text>
-          </Pressable>
-        </View>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -570,7 +578,7 @@ function SetupPanel({
         </View>
       ) : tier === 'T1' ? (
         <View style={styles.lockedBanner}>
-          <Text style={styles.lockedIcon}>🔒</Text>
+          <AppIcon color={colors.primary} name="lock" size={28} style={styles.lockedIcon} />
           <View style={styles.lockedTextGroup}>
             <Text style={styles.lockedTitle}>투기장은 T2부터 활성화됩니다</Text>
             <Text style={styles.lockedDesc}>
@@ -932,14 +940,21 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 14,
-    // 플로팅 actionBar(~90px) + 하단 탭 간격 확보
-    paddingBottom: 130,
+    // 입장하기 버튼이 하단 탭 카드에 가리지 않도록 카드 높이만큼 확보
+    paddingBottom: 160,
+    
+
   },
   header: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    // ScrollView 밖 고정 헤더 — 본문 padding과 좌우 정렬 맞춤
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
   },
   backButton: {
     alignItems: 'center',
@@ -959,45 +974,17 @@ const styles = StyleSheet.create({
   headerTextWrap: {
     flex: 1,
   },
-  headerIconRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerIconBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 99,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    position: 'relative',
-    width: 40,
-  },
-  headerIconText: {
-    fontSize: 18,
-  },
-  headerBadge: {
-    backgroundColor: '#E63946',
-    borderColor: colors.surface,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    height: 10,
-    position: 'absolute',
-    right: 6,
-    top: 6,
-    width: 10,
-  },
   title: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
   },
   subtitle: {
     color: colors.muted,
     fontSize: 13,
     lineHeight: 19,
-    marginTop: 2,
+    // 본문 맨 위 안내 문구 — 아래 패널과 간격
+    marginBottom: 16,
   },
   heroBand: {
     backgroundColor: colors.primary,
@@ -1374,24 +1361,10 @@ const styles = StyleSheet.create({
   },
   actionBar: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 20,
-    borderWidth: 1,
-    bottom: 6,            // 하단 탭 바로 위에 살짝만 띄움
     flexDirection: 'row',
     gap: 10,
-    left: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    position: 'absolute',
-    right: 12,
-    // 그림자
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 8,
+    // 스크롤 콘텐츠 흐름 안에 위치 — 위 콘텐츠와 간격만 둠
+    marginTop: 32,
   },
   primaryAction: {
     alignItems: 'center',

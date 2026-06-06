@@ -289,7 +289,7 @@ export function SearchScreen() {
       : fallback.points;
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       {/* ── 헤더: 검색창 + 아이콘 ── */}
       <View style={styles.header}>
         <View style={[styles.searchBar, isSearchFocused && styles.searchBarFocused]}>

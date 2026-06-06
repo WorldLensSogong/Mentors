@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '@/constants/colors';
+import { IconLabel } from '@/components/AppIcon';
 import { getNewsDetail, listMyScraps, searchNews } from '@/features/explore/content/api';
 import type { NewsArticleResponse, SearchHit } from '@/features/explore/content/types';
 import type { AppStackParamList } from '@/navigation/types';
@@ -98,6 +99,7 @@ export function RssArticleSummaryScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isScrapped, setIsScrapped] = useState(false);
   const [related, setRelated] = useState<SearchHit[]>([]);
+  const [reloadTick, setReloadTick] = useState(0);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -139,7 +141,7 @@ export function RssArticleSummaryScreen() {
       })
       .catch(() => { if (mountedRef.current) setError(true); })
       .finally(() => { if (mountedRef.current) setIsLoading(false); });
-  }, [article_id, title]);
+  }, [article_id, title, reloadTick]);
 
   // 스크랩 여부 확인 — article_id 또는 url로 매칭. 화면 포커스마다 재확인하여
   // 스크랩 후 나갔다 들어와도 '저장됨' 상태가 유지되도록 한다.
@@ -190,6 +192,11 @@ export function RssArticleSummaryScreen() {
   const relevanceInfo = relevance ? RELEVANCE_MAP[relevance] : null;
   const showAnalysis = !!detail && !isLoading;
 
+  // AI 처리 상태 — 요약이 '준비 중'인지(pending/processing) vs 영영 제공 안 되는지
+  // (skipped/failed)를 구분해서 정직하게 안내한다.
+  const aiStatus = detail?.ai_processing_status ?? null;
+  const aiPending = aiStatus === 'pending' || aiStatus === 'processing';
+
   // 스크랩 폴더 저장용 기사 스냅샷
   const scrapCategory =
     (strategies.length > 0 ? STRATEGY_MAP[strategies[0]] ?? strategies[0] : null) ??
@@ -217,14 +224,27 @@ export function RssArticleSummaryScreen() {
         <View style={styles.headerRight}>
           {isScrapped ? (
             <View style={styles.savedBadge}>
-              <Text style={styles.savedBadgeText}>✓ 저장됨</Text>
+              <IconLabel
+                color={colors.primary}
+                icon="check-circle"
+                iconColor={colors.primary}
+                iconSize={14}
+                label="저장됨"
+                textStyle={styles.savedBadgeText}
+              />
             </View>
           ) : null}
           <Pressable
             onPress={() => setPickerOpen(true)}
             style={({ pressed }) => [styles.scrapBtn, pressed && styles.pressed]}
           >
-            <Text numberOfLines={1} style={styles.scrapBtnText}>스크랩 추가</Text>
+            <IconLabel
+              icon="bookmark"
+              iconColor={colors.text}
+              iconSize={15}
+              label="스크랩 추가"
+              textStyle={styles.scrapBtnText}
+            />
           </Pressable>
         </View>
       </View>
@@ -381,9 +401,21 @@ export function RssArticleSummaryScreen() {
             <Text style={styles.errorText}>
               요약을 불러오지 못했어요. 원문을 직접 확인해 주세요.
             </Text>
+          ) : aiPending ? (
+            <View style={styles.statusBox}>
+              <Text style={styles.statusText}>
+                AI가 이 기사의 요약을 준비하고 있어요. 잠시 후 다시 확인해 주세요.
+              </Text>
+              <Pressable
+                onPress={() => setReloadTick((t) => t + 1)}
+                style={({ pressed }) => [styles.recheckBtn, pressed && styles.pressed]}
+              >
+                <Text style={styles.recheckBtnText}>다시 확인</Text>
+              </Pressable>
+            </View>
           ) : (
-            <Text style={styles.errorText}>
-              아직 AI 요약이 준비되지 않았어요.
+            <Text style={styles.statusMutedText}>
+              이 뉴스는 신뢰도가 낮아 AI 요약을 제공하지 않아요. 아래 원문에서 내용을 확인해 주세요.
             </Text>
           )}
         </View>
@@ -405,7 +437,14 @@ export function RssArticleSummaryScreen() {
           onPress={openOriginal}
           style={({ pressed }) => [styles.originalBtn, pressed && styles.pressed]}
         >
-          <Text style={styles.originalBtnText}>원문 기사 보기 ↗</Text>
+          <IconLabel
+            color={colors.primary}
+            icon="open-in-new"
+            iconColor={colors.primary}
+            iconSize={16}
+            label="원문 기사 보기"
+            textStyle={styles.originalBtnText}
+          />
         </Pressable>
 
         {/* 관련 기사 — SearchScreen 카드 스타일 */}
@@ -750,6 +789,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 20,
+  },
+  statusBox: {
+    gap: 12,
+  },
+  statusText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 21,
+  },
+  statusMutedText: {
+    color: colors.muted,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 21,
+  },
+  recheckBtn: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    borderRadius: 99,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+  },
+  recheckBtnText: {
+    color: colors.surface,
+    fontSize: 13,
+    fontWeight: '800',
   },
   bodyCard: {
     backgroundColor: colors.surface,
